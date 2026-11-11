@@ -231,7 +231,6 @@ function mapPrintGraph(){
  const width=Math.max(300,Math.ceil(right+40)),height=Math.max(250,Math.ceil(bottom+45));
  graph.removeAttribute('id');
  graph.style.width=width+'px';graph.style.height=height+'px';graph.style.zoom='100%';
- graph.querySelectorAll('button').forEach(b=>{b.disabled=true;b.tabIndex=-1});
  return {html:graph.outerHTML,width,height};
 }
 function mapPrintPlan(w,h,preference='auto'){
@@ -303,12 +302,12 @@ function openMapPrintPreview(){
  @media print{
   html,body{background:white!important;width:auto!important;overflow:visible!important}
   .print-topbar{display:none!important}
-  .map-sheet{margin:0!important;box-shadow:none!important;border:0!important;width:${plan.paperW}mm!important;height:${plan.paperH}mm!important}
+  .map-sheet{margin:0!important;box-shadow:none!important;border:0!important;width:calc(${plan.paperW}mm - 0.6mm)!important;height:calc(${plan.paperH}mm - 0.6mm)!important}
   .map-sheet-viewport{border:1px solid #e1e7ee}
  }
  `;
  const doc=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>TaskFlow · 구조도 인쇄 · ${escTitle}</title><style>${stylesheet}</style><style>${extraCss}</style></head><body>
- <div class="print-topbar"><div><strong>구조도 인쇄 · ${plan.name} 가로 · ${plan.tiles.length}장</strong><p>미리보기를 확인한 뒤 인쇄하세요. 용지 크기 및 방향은 인쇄창에서도 확인해 주세요.</p></div><button type="button" onclick="window.print()">인쇄 / PDF 저장</button></div>
+ <div class="print-topbar"><div><strong>구조도 인쇄 · ${plan.name} 가로 · ${plan.tiles.length}장</strong><p>미리보기를 확인한 뒤 인쇄하세요. 인쇄창에서 용지 크기·가로 방향을 확인하고, 완료 카드의 색상이 필요하면 ‘배경 그래픽’을 켜 주세요.</p></div><button type="button" onclick="window.print()">인쇄 / PDF 저장</button></div>
  ${sheets}</body></html>`;
  preview.document.open();preview.document.write(doc);preview.document.close();
  closeMapPrintDialog();
