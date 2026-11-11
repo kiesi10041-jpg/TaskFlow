@@ -55,6 +55,20 @@
 .stage-deadline{display:inline-block;width:max-content;border-radius:7px;padding:6px 10px;font-size:11px;font-weight:800}
 .stage-deadline.urgent{background:#fff1dc;color:#9b5b06}
 .stage-deadline.late{background:#ffe9ea;color:#ad2939}
+
+/* 도식형 카드: 단계 번호와 마감일만 상단 한 줄에 표시 */
+.graph-node.step,.graph-node.work{padding:12px 13px;gap:8px;justify-content:space-between}
+.graph-node .node-head{display:flex;align-items:center;justify-content:space-between;gap:7px;min-height:15px;min-width:0}
+.graph-node .node-head .kind{white-space:nowrap;flex-shrink:0;font-size:10px}
+.graph-node.step .node-title{font-size:13px;line-height:1.38}
+.graph-node.work .node-title{font-size:12.5px;line-height:1.38}
+.graph-node .node-date-inline{font-size:10px;font-weight:800;flex-shrink:0;white-space:nowrap;border-radius:6px;padding:3px 6px;background:#edf1f8;color:#62748d}
+.graph-node .node-date-inline.urgent{background:#fff0d7;color:#a8660b}
+.graph-node .node-date-inline.late{background:#ffebed;color:#b42d3e}
+.graph-node .node-date-inline.done{background:#e0f1e9;color:#347b61}
+.graph-node.step .node-bottom{font-size:11px}
+.graph-node.work .node-bottom{font-size:10.5px}
+.graph-node .node-bottom>span{min-width:0;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -141,10 +155,12 @@ function taskMeta(n,type,st){
 }
 function nodeCard(n,type,x,y,w,h,level,label){
  const st=stateOf(n,level),pr=rate(n,level),summary=stats(n,level);
+ const due=(type==='step'||type==='work')?dueStatus(n,st):null;
+ const dueChip=due?`<span class="node-date-inline ${due.kind}" title="${esc(due.label?`마감 ${n.due} · ${due.label}`:`마감 ${n.due}`)}">◷ ${esc(due.date)}</span>`:'';
  const progress=(type==='step'?(st==='done'?'✓ 완료':needsFinalConfirmation(n,level)?'하위 완료 · 최종 확인 필요':stateText[st])
     :st==='done'&&(type==='category'||type==='work')?`✓ 완료 · ${summary.done}/${summary.total}`
     :`${pr}% · ${summary.done}/${summary.total}`);
- return `<div class="graph-node ${type} ${st==='done'?'done':''} ${st==='blocked'?'blocked':''} ${selectedId===n.id?'selected':''}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px" data-node="${esc(n.id)}"><div class="kind">${label}</div><div class="node-title">${esc(n.title)}</div>${taskMeta(n,type,st)}<div class="node-bottom"><span>${progress}</span><div class="node-tools">${type==='work'?`<button class="mini-btn" data-focus="${esc(n.id)}">단계 보기 →</button>`:''}${type==='step'?`<button class="toggle ${st==='done'?'isdone':''}" data-toggle="${esc(n.id)}" title="완료 처리">${st==='done'?'✓':''}</button>`:''}<button class="mini-btn" data-add="${esc(n.id)}" title="하위 단계 추가">＋</button></div></div>${type!=='step'?`<div class="prgr"><div style="width:${pr}%"></div></div>`:''}</div>`;
+ return `<div class="graph-node ${type} ${st==='done'?'done':''} ${st==='blocked'?'blocked':''} ${selectedId===n.id?'selected':''}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px" data-node="${esc(n.id)}"><div class="node-head"><div class="kind">${label}</div>${dueChip}</div><div class="node-title">${esc(n.title)}</div><div class="node-bottom"><span>${progress}</span><div class="node-tools">${type==='work'?`<button class="mini-btn" data-focus="${esc(n.id)}">단계 보기 →</button>`:''}${type==='step'?`<button class="toggle ${st==='done'?'isdone':''}" data-toggle="${esc(n.id)}" title="완료 처리">${st==='done'?'✓':''}</button>`:''}<button class="mini-btn" data-add="${esc(n.id)}" title="하위 단계 추가">＋</button></div></div>${type!=='step'?`<div class="prgr"><div style="width:${pr}%"></div></div>`:''}</div>`;
 }
 function bezier(x1,y1,x2,y2,status='todo'){const d=Math.max(20,Math.min(125,(x2-x1)*.43));const color=status==='done'?'#69b9a0':status==='blocked'?'#d8a19f':'#b4c2d6';return `<path d="M ${x1} ${y1} C ${x1+d} ${y1}, ${x2-d} ${y2}, ${x2} ${y2}" stroke="${color}" stroke-width="2.4" fill="none" stroke-linecap="round"/><circle cx="${x2}" cy="${y2}" r="3" fill="${color}"/>`}
 function renderMap(){
@@ -170,7 +186,7 @@ function renderMap(){
  const html=boxes.map(b=>{
   const d=b.depth;
   const label=d===0?'사업 / 기업':d===1?'지원항목':d===2?'세부과업':d===3?`실행 ${String(b.index+1).padStart(2,'0')}`:`하위 ${d-3}단계 · ${String(b.index+1).padStart(2,'0')}`;
-  const hasMeta=d>=2&&(ownerNames(b.n).length>0||/^\d{4}-\d{2}-\d{2}$/.test(b.n.due||''));const h=d===0?112:d===1?90:d===2?(hasMeta?140:112):(hasMeta?142:112);
+  const h=d===0?112:d===1?90:d===2?112:104;
   return nodeCard(b.n,d===0?'root':d===1?'category':d===2?'work':'step',xFor(d),b.y-h/2,wFor(d),h,d,label);
  }).join('');
  return `<div class="map-pane" id="mapPane"><div class="floating-help">연결선을 따라 하위 단계를 확인하세요. 각 카드의 ＋ 버튼으로 하위 단계를 계속 추가할 수 있습니다. 세부과업의 ‘단계 보기’를 누르면 상세 관리로 이동합니다.</div><div class="map-scroll"><div class="graph" id="graph" style="width:${width}px;height:${height}px;zoom:${zoom}%"><svg viewBox="0 0 ${width} ${height}" aria-hidden="true">${lines}</svg>${html}</div></div></div>`;
