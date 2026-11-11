@@ -100,11 +100,11 @@
 <div class="backdrop hidden" id="duplicateBackdrop" role="dialog" aria-modal="true" aria-labelledby="duplicateTitle"><form class="modal" id="duplicateForm"><h2 id="duplicateTitle">⧉ 기존 사업 복제</h2><p>선택한 사업의 지원항목, 세부과업, 모든 하위 실행단계를 새 사업으로 복사합니다. 원본은 그대로 유지됩니다.</p><label class="field"><span>새 사업명 *</span><input id="duplicateName" maxlength="130" required></label><label class="field"><span>업체명 / 발주처</span><input id="duplicateClient" maxlength="100"></label><label class="field"><span>복제 방식</span><select id="duplicateMode"><option value="reset">구조만 복제 (상태·메모·담당자·기한 초기화)</option><option value="all">전체 복제 (기존 진행상태·기록까지 유지)</option></select></label><div class="admin-notice">새 업체에 적용할 때는 구조만 복제를 권장합니다. 기존 업체의 수행실적이나 메모가 섞이지 않습니다.</div><div class="modal-actions"><button class="btn" type="button" id="duplicateCancel">취소</button><button class="btn primary" type="submit">새 사업으로 복제</button></div></form></div><div class="backdrop hidden" id="mapPrintBackdrop" role="dialog" aria-modal="true" aria-labelledby="mapPrintTitle">
  <div class="modal map-print-modal">
   <h2 id="mapPrintTitle">연결형 구조도 인쇄</h2>
-  <p>현재 사업의 카드, 연결선, 진행상태를 그대로 출력합니다. A4에 읽기 좋은 크기로 들어가면 A4, 더 크면 A3를 사용합니다. A3보다 큰 구조도는 여러 장으로 자동 분할합니다.</p>
-  <label class="field"><span>용지 크기</span><select id="mapPrintPaper">
+  <p>전체 연결형 구조도를 한 장에 맞추거나, 글자 크기를 유지하며 여러 장으로 나눌 수 있습니다. 한 장 맞춤에서는 카드 간격을 정리하고 용지 방향도 자동 선택합니다.</p>
+  <label class="field"><span>출력 방식</span><select id="mapPrintMode"><option value="single">한 장에 맞춤 (기본)</option><option value="split">읽기 좋은 크기로 분할</option></select></label><label class="field"><span>용지 크기</span><select id="mapPrintPaper">
    <option value="auto">자동 선택 (A4 또는 A3)</option>
-   <option value="A4">A4 가로</option>
-   <option value="A3">A3 가로</option>
+   <option value="A4">A4 (방향 자동)</option>
+   <option value="A3">A3 (방향 자동)</option>
   </select></label>
   <div class="map-print-note" id="mapPrintSummary">구조도 크기를 확인합니다.</div>
   <div class="modal-actions"><button class="btn" id="mapPrintCancel" type="button">취소</button><button class="btn primary" id="mapPrintOpen" type="button">인쇄 미리보기 열기</button></div>
@@ -219,7 +219,31 @@ function detailStep(n,index){
 }
 function renderDetail(){const p=current(),works=allWork(p);if(!p)return '<div class="empty">등록된 사업이 없습니다.</div>';if(!works.length)return `<div class="detail-pane"><div class="empty">아직 세부과업이 없습니다. 연결형 구조도에서 지원항목과 세부과업을 등록하세요.<div style="margin-top:13px"><button class="btn primary" data-view="map">구조도로 이동</button></div></div></div>`;let item=works.find(w=>w.work.id===focusId)||works[0];focusId=item.work.id;const w=item.work,c=item.category,s=stats(w,2),pr=rate(w,2);return `<div class="detail-pane"><div class="crumbs"><button data-view="dashboard">전체 사업</button> › <button data-view="map">${esc(p.title)}</button> › ${esc(c.title)} › <strong>${esc(w.title)}</strong></div><div class="detail-layout"><div class="work-list"><div class="list-heading">세부과업 선택 (${works.length})</div>${works.map(t=>`<button class="work-nav ${t.work.id===w.id?'active':''}" data-focus="${esc(t.work.id)}"><strong>${esc(t.work.title)}</strong><small>${esc(t.category.title)} · ${rate(t.work,2)}%</small></button>`).join('')}</div><div class="detail-main"><div class="detail-hero"><div><div class="eyebrow">${esc(c.title)} / WORKSTREAM</div><h2>${esc(w.title)}</h2><p>${esc(w.note||'연결된 실행단계를 왼쪽부터 순서대로 관리합니다.')}</p></div><div class="detail-progress"><strong>${pr}%</strong><small>${s.done}/${s.total}단계 완료</small><div class="progressbar" style="margin-top:10px"><div class="fill" style="width:${pr}%"></div></div></div></div><div class="detail-controls"><h3>실행단계 흐름</h3><button class="btn" data-select="${esc(w.id)}">✎ 세부과업 편집</button><button class="btn primary" data-add="${esc(w.id)}">＋ 실행단계 추가</button></div><div class="stage-scroll"><div class="stage-chain">${w.children.length?w.children.map(detailStep).join(''):`<div class="empty" style="min-width:350px">등록된 실행단계가 없습니다.<div style="margin-top:13px"><button class="btn primary" data-add="${esc(w.id)}">첫 단계 추가</button></div></div>`}</div></div><div class="detail-footnote">※ 실행단계의 완료 □를 클릭하면 자동 저장됩니다. 각 카드를 선택하면 오른쪽에서 담당자, 기한, 메모, 상태 및 하위 단계를 편집할 수 있습니다.</div></div></div></div>`}
 
-function mapPrintGraph(){
+function mapPrintGraph(compact=false){
+ if(compact){
+  const p=current();if(!p)throw Error('출력할 사업이 없습니다.');
+  const boxes=[],edges=[];let leaf=0,maxDepth=0;
+  const cardW=depth=>depth===0?188:depth===1?178:depth===2?196:188;
+  const cardH=depth=>depth===0?100:depth===1?86:depth===2?94:94;
+  const colX=depth=>depth===0?24:depth===1?245:depth===2?458:682+(depth-3)*212;
+  function place(n,depth=0,index=0){
+   maxDepth=Math.max(maxDepth,depth);
+   const kids=(n.children||[]).map((c,i)=>place(c,depth+1,i));
+   const y=kids.length?(kids[0].y+kids[kids.length-1].y)/2:70+(leaf++)*106;
+   const row={n,depth,index,y};boxes.push(row);
+   kids.forEach(k=>edges.push([row,k]));
+   return row;
+  }
+  place(p);
+  const width=Math.max(300,colX(maxDepth)+cardW(maxDepth)+28);
+  const height=Math.max(250,70+Math.max(0,leaf-1)*106+96);
+  const svg=edges.map(([a,b])=>bezier(colX(a.depth)+cardW(a.depth),a.y,colX(b.depth),b.y,stateOf(b.n,b.depth))).join('');
+  const cards=boxes.map(b=>{
+   const d=b.depth,label=d===0?'사업 / 기업':d===1?'지원항목':d===2?'세부과업':d===3?`실행 ${String(b.index+1).padStart(2,'0')}`:`하위 ${d-3}단계 · ${String(b.index+1).padStart(2,'0')}`;
+   return nodeCard(b.n,d===0?'root':d===1?'category':d===2?'work':'step',colX(d),b.y-cardH(d)/2,cardW(d),cardH(d),d,label);
+  }).join('');
+  return {html:`<div class="graph print-compact" style="width:${width}px;height:${height}px"><svg viewBox="0 0 ${width} ${height}" aria-hidden="true">${svg}</svg>${cards}</div>`,width,height,compact:true};
+ }
  const temp=document.createElement('div');temp.innerHTML=renderMap();
  const graph=temp.querySelector('#graph');
  if(!graph)throw Error('출력할 연결형 구조도가 없습니다.');
@@ -231,58 +255,81 @@ function mapPrintGraph(){
  const width=Math.max(300,Math.ceil(right+40)),height=Math.max(250,Math.ceil(bottom+45));
  graph.removeAttribute('id');
  graph.style.width=width+'px';graph.style.height=height+'px';graph.style.zoom='100%';
- return {html:graph.outerHTML,width,height};
+ const svg=graph.querySelector('svg');if(svg)svg.setAttribute('viewBox',`0 0 ${width} ${height}`);
+ return {html:graph.outerHTML,width,height,compact:false};
 }
-function mapPrintPlan(w,h,preference='auto'){
- const specs={A4:{name:'A4',paperW:297,paperH:210,usableW:277,usableH:176},A3:{name:'A3',paperW:420,paperH:297,usableW:400,usableH:263}};
- const pxPerMm=96/25.4;
+function mapPrintPlan(w,h,preference='auto',mode='single'){
+ const ppm=96/25.4;
+ const spec=(name,orientation)=>{
+  const dims={A4:[297,210],A3:[420,297]}[name];
+  const paperW=orientation==='landscape'?dims[0]:dims[1];
+  const paperH=orientation==='landscape'?dims[1]:dims[0];
+  return {name,orientation,paperW,paperH,usableW:paperW-20,usableH:paperH-34};
+ };
+ const fit=p=>Math.min(1.05,p.usableW*ppm/w,p.usableH*ppm/h);
+ if(mode==='single'){
+  const best=name=>[spec(name,'landscape'),spec(name,'portrait')].sort((a,b)=>fit(b)-fit(a))[0];
+  const a4=best('A4'),a3=best('A3');
+  const chosen=preference==='A4'?a4:preference==='A3'?a3:fit(a4)>=0.82?a4:a3;
+  const scale=fit(chosen);
+  return {...chosen,scale,cols:1,rows:1,tiles:[{x:0,y:0}],width:w,height:h,onePage:true,mode:'single'};
+ }
  const test=name=>{
-  const z=specs[name],areaW=z.usableW*pxPerMm,areaH=z.usableH*pxPerMm;
-  const fit=Math.min(1.05,areaW/w,areaH/h);
-  if(fit>=0.82)return {...z,scale:fit,cols:1,rows:1,tiles:[{x:0,y:0}],width:w,height:h,onePage:true};
-  const scale=0.93,spanW=areaW/scale,spanH=areaH/scale,overlap=64;
+  const z=spec(name,'landscape'),areaW=z.usableW*ppm,areaH=z.usableH*ppm;
+  const scale=Math.min(1.05,areaW/w,areaH/h);
+  if(scale>=0.82)return {...z,scale,cols:1,rows:1,tiles:[{x:0,y:0}],width:w,height:h,onePage:true,mode:'split'};
+  const multiScale=0.93,spanW=areaW/multiScale,spanH=areaH/multiScale,overlap=64;
   const cols=Math.max(1,1+Math.ceil(Math.max(0,w-spanW)/Math.max(1,spanW-overlap)));
   const rows=Math.max(1,1+Math.ceil(Math.max(0,h-spanH)/Math.max(1,spanH-overlap)));
   const tiles=[];
-  for(let row=0;row<rows;row++)for(let col=0;col<cols;col++)
-   tiles.push({x:col*Math.max(1,spanW-overlap),y:row*Math.max(1,spanH-overlap)});
-  return {...z,scale,cols,rows,tiles,width:w,height:h,onePage:false};
+  for(let row=0;row<rows;row++)for(let col=0;col<cols;col++)tiles.push({x:col*Math.max(1,spanW-overlap),y:row*Math.max(1,spanH-overlap)});
+  return {...z,scale:multiScale,cols,rows,tiles,width:w,height:h,onePage:false,mode:'split'};
  };
  const a4=test('A4'),a3=test('A3');
  return preference==='A4'?a4:preference==='A3'?a3:a4.onePage?a4:a3;
 }
 function mapPrintSummary(){
  if(!current())return;
- const g=mapPrintGraph();
- const plan=mapPrintPlan(g.width,g.height,$('#mapPrintPaper').value);
- const count=plan.tiles.length;
- $('#mapPrintSummary').innerHTML='<strong>추천 출력: '+plan.name+' 가로 · '+count+'장</strong><div>카드와 연결선을 '+(plan.onePage?'한 장에 맞춰 인쇄합니다.':'여러 장으로 나누어 인쇄합니다. 인접 페이지는 일부 겹치도록 배치됩니다.')+'</div><div>용지에 맞게 인쇄 미리보기가 열립니다. 브라우저 인쇄 설정에서도 <b>'+plan.name+' 가로</b>를 선택해 주세요.</div>';
+ const mode=$('#mapPrintMode').value,preference=$('#mapPrintPaper').value;
+ const g=mapPrintGraph(mode==='single');
+ const plan=mapPrintPlan(g.width,g.height,preference,mode);
+ const count=plan.tiles.length,percent=Math.round(plan.scale*100);
+ const sizeLabel=`${plan.name} ${plan.orientation==='portrait'?'세로':'가로'}`;
+ const small=mode==='single'&&plan.scale<0.67;
+ const msg=mode==='single'
+  ?`전체 구조도를 한 장에 맞춥니다. 인쇄 전용으로 카드 간격을 줄였으며, 현재 예상 크기는 원본의 약 ${percent}%입니다.`
+  :count===1?'한 장으로 인쇄합니다.':`카드 크기를 유지하며 ${count}장으로 나눕니다. 인접 페이지는 일부 겹칩니다.`;
+ $('#mapPrintSummary').innerHTML=`<strong>예상 출력: ${sizeLabel} · ${count}장</strong><div>${msg}</div>${small?'<div style="color:#b5402f;font-weight:800">주의: 한 장에 모두 넣으면 글씨가 작아질 수 있습니다. 잘 안 보이면 분할 출력을 선택하세요.</div>':''}<div>브라우저 인쇄창의 용지 크기와 방향이 미리보기와 같은지 확인해 주세요.</div>`;
 }
 function openMapPrintDialog(){
  if(!current()){notify('먼저 사업을 선택해 주세요.');return}
  $('#mapPrintPaper').value='auto';
+ $('#mapPrintMode').value='single';
  $('#mapPrintBackdrop').classList.remove('hidden');
  mapPrintSummary();
 }
 function closeMapPrintDialog(){$('#mapPrintBackdrop').classList.add('hidden')}
 function openMapPrintPreview(){
- const g=mapPrintGraph(),plan=mapPrintPlan(g.width,g.height,$('#mapPrintPaper').value);
+ const mode=$('#mapPrintMode').value;
+ const g=mapPrintGraph(mode==='single'),plan=mapPrintPlan(g.width,g.height,$('#mapPrintPaper').value,mode);
  const preview=window.open('','_blank');
  if(!preview){notify('인쇄 미리보기 팝업이 차단되었습니다. 이 사이트의 팝업을 허용해 주세요.');return}
  const escTitle=esc(current().title);
  const stylesheet=document.querySelector('style')?.textContent||'';
  const sheets=plan.tiles.map((tile,i)=>{
-  const tx=-(tile.x*plan.scale).toFixed(2),ty=-(tile.y*plan.scale).toFixed(2);
+  const ppm=96/25.4;
+  const tx=plan.onePage?Math.max(0,(plan.usableW*ppm-g.width*plan.scale)/2):-(tile.x*plan.scale);
+  const ty=plan.onePage?Math.max(0,(plan.usableH*ppm-g.height*plan.scale)/2):-(tile.y*plan.scale);
   return `<section class="map-sheet">
     <div class="map-sheet-head"><div><strong>${escTitle}</strong><small>TaskFlow · 연결형 구조도</small></div><div class="map-sheet-meta">${plan.name} 가로 | ${i+1} / ${plan.tiles.length}</div></div>
     <div class="map-sheet-viewport" style="width:${plan.usableW}mm;height:${plan.usableH}mm">
-     <div class="map-sheet-layer" style="transform:translate(${tx}px,${ty}px) scale(${plan.scale.toFixed(5)})">${g.html}</div>
+     <div class="map-sheet-layer" style="transform:translate(${tx.toFixed(2)}px,${ty.toFixed(2)}px) scale(${plan.scale.toFixed(5)})">${g.html}</div>
     </div>
     <footer class="map-sheet-foot"><span>진행상태·완료 표시 기준 · 출력일 ${today()}</span><span>${plan.tiles.length>1?'분할 인쇄 · 인접 페이지 일부 겹침':'전체 구조도'}</span></footer>
    </section>`;
  }).join('');
  const extraCss=`
- @page{size:${plan.name} landscape;margin:0}
+ @page{size:${plan.name} ${plan.orientation};margin:0}
  *{print-color-adjust:exact!important;-webkit-print-color-adjust:exact!important}
  html,body{margin:0!important;padding:0!important;height:auto!important;overflow:visible!important;background:#e6ebf3!important}
  .print-topbar{display:flex;gap:15px;align-items:center;justify-content:space-between;flex-wrap:wrap;max-width:900px;margin:18px auto;padding:15px 18px;background:white;border-radius:12px;border:1px solid #dae2ed;font:13px system-ui,sans-serif}
@@ -296,7 +343,13 @@ function openMapPrintPreview(){
  .map-sheet-meta{font-size:11px;white-space:nowrap;color:#53657d;font-weight:700}
  .map-sheet-viewport{position:absolute;top:17mm;left:10mm;background:#f3f6fa;background-image:radial-gradient(#d0dce9 .7px,transparent .7px);background-size:18px 18px;overflow:hidden;border:1px solid #e1e7ee}
  .map-sheet-layer{position:absolute;left:0;top:0;transform-origin:0 0;will-change:auto}
- .map-sheet-layer .graph{zoom:100%!important}
+ .map-sheet-layer .graph{zoom:100%!important;min-width:0!important}
+ .map-sheet-layer .graph.print-compact .graph-node{padding:7px 9px!important;gap:5px!important;box-shadow:none!important}
+ .map-sheet-layer .graph.print-compact .graph-node .node-title{font-size:13px!important;line-height:1.35!important}
+ .map-sheet-layer .graph.print-compact .graph-node .kind{font-size:10px!important}
+ .map-sheet-layer .graph.print-compact .graph-node .node-bottom{font-size:11px!important}
+ .map-sheet-layer .graph.print-compact .graph-node .node-tools{display:none!important}
+ .map-sheet-layer .graph.print-compact .graph-node.selected{outline:none!important}
  .map-sheet-layer button{pointer-events:none!important}
  .map-sheet-foot{position:absolute;left:10mm;right:10mm;bottom:4mm;display:flex;justify-content:space-between;color:#7a8999;font-size:9px;font-family:system-ui,"Malgun Gothic",sans-serif}
  @media print{
@@ -445,7 +498,7 @@ function handleGlobalClick(e){const target=e.target;
 }
 $('#app').addEventListener('click',handleGlobalClick);
 $('#content').addEventListener('input',e=>{if(e.target.id!=='projectSearch')return;query=e.target.value;const caret=e.target.selectionStart;const grid=$('#projectGrid');const t=document.createElement('div');t.innerHTML=renderDashboard();grid.innerHTML=t.querySelector('#projectGrid')?.innerHTML||'';e.target.setSelectionRange(caret,caret)});
-$('#mapPrintPaper').addEventListener('change',mapPrintSummary);
+$('#mapPrintPaper').addEventListener('change',mapPrintSummary);$('#mapPrintMode').addEventListener('change',mapPrintSummary);
 $('#mapPrintCancel').addEventListener('click',closeMapPrintDialog);
 $('#mapPrintOpen').addEventListener('click',openMapPrintPreview);
 $('#mapPrintBackdrop').addEventListener('click',e=>{if(e.target.id==='mapPrintBackdrop')closeMapPrintDialog()});
