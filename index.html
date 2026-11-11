@@ -69,6 +69,12 @@
 .graph-node.step .node-bottom{font-size:11px}
 .graph-node.work .node-bottom{font-size:10.5px}
 .graph-node .node-bottom>span{min-width:0;overflow-wrap:anywhere}
+
+/* 연결형 구조도 인쇄 - 페이지/자동 용지 선택 */
+.map-print-modal{max-width:540px}
+.map-print-modal .field select{width:100%;padding:12px;border:1px solid #dce5f1;border-radius:10px;background:white;color:var(--ink)}
+.map-print-note{border:1px solid #dbe6f4;border-radius:10px;background:#f4f7fc;padding:14px 16px;font-size:12px;line-height:1.7;color:#405775;margin-top:12px}
+.map-print-note strong{color:#22446f}
 </style>
 </head>
 <body>
@@ -83,7 +89,7 @@
  <div class="sidebottom"><button class="sidebutton admin-bottom" id="adminMenu" data-view="admin" type="button"><span>⚙</span> 관리자 설정</button><i id="savedDot" class="hidden" aria-hidden="true"></i><span id="saveLabel" class="hidden" aria-hidden="true">기기에 저장됨</span><input type="file" accept=".json,application/json" id="importFile" class="hidden"></div>
 </aside>
 <main class="primaryarea"><header class="topbar"><div style="display:flex;gap:10px;align-items:center;min-width:0"><button class="btn mobile-menu" id="mobileMenu" aria-label="사업 목록 열기">☰</button><div style="min-width:0"><div class="eyebrow" id="pageEyebrow">PROJECT MANAGEMENT</div><h1 class="pagetitle" id="pageTitle">전체 사업 현황</h1><div class="pagesub" id="pageSub">사업을 선택하면 연결형 과업도를 볼 수 있습니다.</div></div></div><div class="topstats"><div class="topstat"><strong id="doneNum">0</strong><small>완료 단계</small></div><div class="topstat"><strong id="totalNum">0</strong><small>전체 단계</small></div><div class="topstat"><strong id="progressNum">0%</strong><small>진행률</small></div></div></header>
- <div class="toolbar"><div class="tabs"><button class="tab" id="tabDashboard" data-view="dashboard">전체 사업</button><button class="tab" id="tabMap" data-view="map">연결형 구조도</button><button class="tab" id="tabDetail" data-view="detail">세부 진행단계</button><button class="tab" id="tabPaper" data-view="print">A4 출력</button></div><span class="spacer"></span><div class="zoombox hidden" id="zoomTools"><button id="zoomMinus" aria-label="축소">−</button><span id="zoomValue">85%</span><button id="zoomPlus" aria-label="확대">＋</button></div><button class="btn" id="editInspector">✎ 항목 편집</button><button class="btn" type="button" id="duplicateCurrent">⧉ 사업 복제</button><button class="btn primary" id="printButton">⎙ A4 인쇄 / PDF</button></div>
+ <div class="toolbar"><div class="tabs"><button class="tab" id="tabDashboard" data-view="dashboard">전체 사업</button><button class="tab" id="tabMap" data-view="map">연결형 구조도</button><button class="tab" id="tabDetail" data-view="detail">세부 진행단계</button><button class="tab" id="tabPaper" data-view="print">A4 출력</button></div><span class="spacer"></span><div class="zoombox hidden" id="zoomTools"><button id="zoomMinus" aria-label="축소">−</button><span id="zoomValue">85%</span><button id="zoomPlus" aria-label="확대">＋</button></div><button class="btn" id="editInspector">✎ 항목 편집</button><button class="btn" type="button" id="duplicateCurrent">⧉ 사업 복제</button><button class="btn" id="mapPrintButton" type="button">⎙ 구조도 인쇄 · A4/A3</button><button class="btn primary" id="printButton">⎙ 체크리스트 인쇄</button></div>
  <section class="content" id="content"></section>
 </main>
 <aside class="inspector" id="inspector"><div class="inspector-body" id="inspectorBody"></div></aside>
@@ -91,7 +97,19 @@
 <div class="print-only" id="printRoot"></div>
 <div class="backdrop hidden" id="entryBackdrop" role="dialog" aria-modal="true" aria-labelledby="entryTitle"><form class="modal" id="entryForm"><h2 id="entryTitle">새 항목</h2><p id="entrySub">과업을 등록합니다.</p><label class="field"><span>명칭 *</span><input id="entryName" maxlength="130" required placeholder="항목명을 입력하세요"></label><label class="field" id="companyWrap"><span>기업명 / 발주처 (선택)</span><input id="entryCompany" maxlength="100" placeholder="예: 업체명 또는 발주처"></label><label class="field"><span>설명 / 메모 (선택)</span><textarea id="entryNote" placeholder="수행 범위, 담당자, 요청사항 등을 입력하세요"></textarea></label><div class="modal-actions"><button class="btn" type="button" id="entryCancel">취소</button><button class="btn primary" type="submit">등록하기</button></div></form></div>
 <div class="backdrop hidden" id="cloudBackdrop" role="dialog" aria-modal="true" aria-labelledby="cloudTitle"><div class="modal"><h2 id="cloudTitle">☁ Supabase 클라우드 연동</h2><p>선택 기능입니다. Supabase 프로젝트에서 별도로 데이터베이스와 로그인 계정을 준비하면 여러 기기에서 동일한 사업 데이터를 관리할 수 있습니다. 준비 전에도 기기 내 저장은 정상 작동합니다.</p><div class="field"><span>Supabase 프로젝트 URL</span><input id="cloudUrl" placeholder="https://xxxx.supabase.co"></div><div class="field"><span>Publishable key 또는 anon key</span><input id="cloudKey" placeholder="sb_publishable_... 또는 eyJ..."></div><div class="field"><span>이메일</span><input id="cloudEmail" type="email" placeholder="example@company.com"></div><div class="field"><span>비밀번호</span><input id="cloudPassword" type="password" autocomplete="current-password" placeholder="비밀번호"></div><div class="cloud-status" id="cloudStatus">기기 내 저장 모드</div><div class="modal-actions" style="flex-wrap:wrap"><button class="btn" id="cloudClose" type="button">닫기</button><button class="btn" id="cloudSignup" type="button">계정 등록</button><button class="btn" id="cloudResend" type="button">인증 메일 재발송</button><button class="btn" id="cloudLogin" type="button">로그인</button><button class="btn verylight" id="cloudSync" type="button">지금 동기화</button><button class="btn danger" id="cloudLogout" type="button">로그아웃</button></div></div></div>
-<div class="backdrop hidden" id="duplicateBackdrop" role="dialog" aria-modal="true" aria-labelledby="duplicateTitle"><form class="modal" id="duplicateForm"><h2 id="duplicateTitle">⧉ 기존 사업 복제</h2><p>선택한 사업의 지원항목, 세부과업, 모든 하위 실행단계를 새 사업으로 복사합니다. 원본은 그대로 유지됩니다.</p><label class="field"><span>새 사업명 *</span><input id="duplicateName" maxlength="130" required></label><label class="field"><span>업체명 / 발주처</span><input id="duplicateClient" maxlength="100"></label><label class="field"><span>복제 방식</span><select id="duplicateMode"><option value="reset">구조만 복제 (상태·메모·담당자·기한 초기화)</option><option value="all">전체 복제 (기존 진행상태·기록까지 유지)</option></select></label><div class="admin-notice">새 업체에 적용할 때는 구조만 복제를 권장합니다. 기존 업체의 수행실적이나 메모가 섞이지 않습니다.</div><div class="modal-actions"><button class="btn" type="button" id="duplicateCancel">취소</button><button class="btn primary" type="submit">새 사업으로 복제</button></div></form></div><div class="toast hidden" id="toast"></div>
+<div class="backdrop hidden" id="duplicateBackdrop" role="dialog" aria-modal="true" aria-labelledby="duplicateTitle"><form class="modal" id="duplicateForm"><h2 id="duplicateTitle">⧉ 기존 사업 복제</h2><p>선택한 사업의 지원항목, 세부과업, 모든 하위 실행단계를 새 사업으로 복사합니다. 원본은 그대로 유지됩니다.</p><label class="field"><span>새 사업명 *</span><input id="duplicateName" maxlength="130" required></label><label class="field"><span>업체명 / 발주처</span><input id="duplicateClient" maxlength="100"></label><label class="field"><span>복제 방식</span><select id="duplicateMode"><option value="reset">구조만 복제 (상태·메모·담당자·기한 초기화)</option><option value="all">전체 복제 (기존 진행상태·기록까지 유지)</option></select></label><div class="admin-notice">새 업체에 적용할 때는 구조만 복제를 권장합니다. 기존 업체의 수행실적이나 메모가 섞이지 않습니다.</div><div class="modal-actions"><button class="btn" type="button" id="duplicateCancel">취소</button><button class="btn primary" type="submit">새 사업으로 복제</button></div></form></div><div class="backdrop hidden" id="mapPrintBackdrop" role="dialog" aria-modal="true" aria-labelledby="mapPrintTitle">
+ <div class="modal map-print-modal">
+  <h2 id="mapPrintTitle">연결형 구조도 인쇄</h2>
+  <p>현재 사업의 카드, 연결선, 진행상태를 그대로 출력합니다. A4에 읽기 좋은 크기로 들어가면 A4, 더 크면 A3를 사용합니다. A3보다 큰 구조도는 여러 장으로 자동 분할합니다.</p>
+  <label class="field"><span>용지 크기</span><select id="mapPrintPaper">
+   <option value="auto">자동 선택 (A4 또는 A3)</option>
+   <option value="A4">A4 가로</option>
+   <option value="A3">A3 가로</option>
+  </select></label>
+  <div class="map-print-note" id="mapPrintSummary">구조도 크기를 확인합니다.</div>
+  <div class="modal-actions"><button class="btn" id="mapPrintCancel" type="button">취소</button><button class="btn primary" id="mapPrintOpen" type="button">인쇄 미리보기 열기</button></div>
+ </div></div>
+ <div class="toast hidden" id="toast"></div>
 <script>
 (()=>{'use strict';
 const KEY='taskflow-v2-projects',OLD_KEY='taskflow-v1-local',SETTINGS_KEY='taskflow-v2-cloud-config',SESSION_KEY='taskflow-v2-cloud-session';
@@ -132,7 +150,7 @@ function changeView(to){if(to!=='dashboard'&&to!=='admin'&&!current()){view='das
 function setInspectorOpen(open){const app=$('#app');app.classList.toggle('inspector-closed',!open);app.classList.toggle('show-inspector',!!open);const btn=$('#editInspector');if(btn){btn.textContent=open?'✕ 패널 닫기':'✎ 항목 편집';btn.setAttribute('aria-expanded',String(!!open))}}
 function titleFor(){return {admin:'관리자 설정',dashboard:'전체 사업 통합 현황',map:current()?.title||'연결형 과업도',detail:current()?.title||'세부 진행단계',print:current()?.title||'A4 출력 체크시트'}[view]}
 function renderSidebar(){const p=current();$('#sideCount').textContent=projects.length;$('#allProjectButton').classList.toggle('active',view==='dashboard');$('#adminMenu').classList.toggle('active',view==='admin');$('#projectList').innerHTML=projects.map(x=>`<button class="project-nav ${x.id===p?.id&&view!=='dashboard'&&view!=='admin'?'active':''}" data-project="${esc(x.id)}"><i class="dot"></i><span class="navname">${esc(x.title)}<small>${allWork(x).length}개 세부과업 · ${rate(x)}% 완료</small></span></button>`).join('')}
-function renderHead(){const p=current(),s=(view==='dashboard'||view==='admin')?aggregate():stats(p);$('#pageEyebrow').textContent=view==='admin'?'PERSONAL ADMIN':view==='dashboard'?'PORTFOLIO OVERVIEW':view==='map'?'CONNECTED TASK MAP':view==='detail'?'WORKSTREAM PROGRESS':'A4 CHECKLIST';$('#pageTitle').textContent=titleFor();$('#pageSub').textContent=view==='admin'?'본인 계정과 클라우드 저장 상태를 관리합니다.':view==='dashboard'?'여러 사업의 진행현황을 확인하고 개별 사업으로 이동하세요.':view==='map'?'사업 → 지원항목 → 세부과업 → 실행단계가 선으로 연결됩니다.':view==='detail'?'세부과업을 선택하여 실행단계를 순서대로 관리합니다.':'현재 선택한 사업의 세부과업을 A4 가로 형식으로 출력합니다.';$('#doneNum').textContent=s.done;$('#totalNum').textContent=s.total;$('#progressNum').textContent=s.total?Math.round(100*s.done/s.total)+'%':'0%';for(const name of ['Dashboard','Map','Detail','Paper'])$('#tab'+name).classList.toggle('active',view===({Dashboard:'dashboard',Map:'map',Detail:'detail',Paper:'print'}[name]));$('.toolbar .tabs').classList.toggle('hidden',view==='admin');$('#zoomTools').classList.toggle('hidden',view!=='map');$('#zoomValue').textContent=zoom+'%';$('#editInspector').classList.toggle('hidden',view==='dashboard'||view==='admin');const inspectorVisible=window.innerWidth<=970?$('#app').classList.contains('show-inspector'):!$('#app').classList.contains('inspector-closed');$('#editInspector').textContent=inspectorVisible?'✕ 패널 닫기':'✎ 항목 편집';$('#editInspector').setAttribute('aria-expanded',String(inspectorVisible));$('#duplicateCurrent').classList.toggle('hidden',view==='dashboard'||view==='admin');$('#printButton').classList.toggle('hidden',view==='dashboard'||view==='admin')}
+function renderHead(){const p=current(),s=(view==='dashboard'||view==='admin')?aggregate():stats(p);$('#pageEyebrow').textContent=view==='admin'?'PERSONAL ADMIN':view==='dashboard'?'PORTFOLIO OVERVIEW':view==='map'?'CONNECTED TASK MAP':view==='detail'?'WORKSTREAM PROGRESS':'A4 CHECKLIST';$('#pageTitle').textContent=titleFor();$('#pageSub').textContent=view==='admin'?'본인 계정과 클라우드 저장 상태를 관리합니다.':view==='dashboard'?'여러 사업의 진행현황을 확인하고 개별 사업으로 이동하세요.':view==='map'?'사업 → 지원항목 → 세부과업 → 실행단계가 선으로 연결됩니다.':view==='detail'?'세부과업을 선택하여 실행단계를 순서대로 관리합니다.':'현재 선택한 사업의 세부과업을 A4 가로 형식으로 출력합니다.';$('#doneNum').textContent=s.done;$('#totalNum').textContent=s.total;$('#progressNum').textContent=s.total?Math.round(100*s.done/s.total)+'%':'0%';for(const name of ['Dashboard','Map','Detail','Paper'])$('#tab'+name).classList.toggle('active',view===({Dashboard:'dashboard',Map:'map',Detail:'detail',Paper:'print'}[name]));$('.toolbar .tabs').classList.toggle('hidden',view==='admin');$('#zoomTools').classList.toggle('hidden',view!=='map');$('#zoomValue').textContent=zoom+'%';$('#editInspector').classList.toggle('hidden',view==='dashboard'||view==='admin');const inspectorVisible=window.innerWidth<=970?$('#app').classList.contains('show-inspector'):!$('#app').classList.contains('inspector-closed');$('#editInspector').textContent=inspectorVisible?'✕ 패널 닫기':'✎ 항목 편집';$('#editInspector').setAttribute('aria-expanded',String(inspectorVisible));$('#duplicateCurrent').classList.toggle('hidden',view==='dashboard'||view==='admin');$('#mapPrintButton').classList.toggle('hidden',view!=='map');$('#printButton').classList.toggle('hidden',view==='dashboard'||view==='admin')}
 function renderDashboard(){const a=aggregate();let list=projects.filter(p=>(p.title+' '+p.client+' '+p.note).toLowerCase().includes(query.toLowerCase()));return `<div class="dashboard"><div class="dashboard-kpis"><div class="kpicard"><span>등록된 사업</span><strong>${projects.length}</strong><small>독립적으로 관리하는 전체 사업</small></div><div class="kpicard"><span>세부과업</span><strong>${a.work}</strong><small>사업별 실행 과업 수</small></div><div class="kpicard"><span>전체 실행단계</span><strong>${a.total}</strong><small>하위 단계까지 합산</small></div><div class="kpicard"><span>완료한 단계</span><strong style="color:var(--green)">${a.done}</strong><small>진행 중 ${a.doing} · 보류 ${a.blocked}</small></div></div><div class="sectionline"><div><h2>사업별 진행현황</h2><p>사업을 선택하면 별도의 도식형 흐름도를 열 수 있습니다.</p></div><input class="search" id="projectSearch" value="${esc(query)}" placeholder="사업명·기업명 검색"></div><div class="project-grid" id="projectGrid">${list.map(p=>{const w=allWork(p),s=stats(p),pr=rate(p);return `<div class="project-card-wrap"><button class="project-card" data-project="${esc(p.id)}"><div class="project-card-head"><div><h3>${esc(p.title)}</h3><div class="client">${esc(p.client||'기업명 미입력')}</div></div><span class="tag">${pr}% 완료</span></div><div class="branches">${(p.children||[]).map(c=>`<span class="branch">${esc(c.title)} · ${(c.children||[]).length}개</span>`).join('')||'<span class="branch">지원항목 추가 필요</span>'}</div><div class="progressbar"><div class="fill" style="width:${pr}%"></div></div><div class="cardbottom"><span>${w.length}개 세부과업 · ${s.done}/${s.total}단계 완료</span><strong>구조도 열기 →</strong></div></button><button class="duplicate-shortcut" type="button" data-duplicate="${esc(p.id)}">⧉ 사업 복제</button></div>`}).join('')||`<div class="empty" style="grid-column:1/-1">검색된 사업이 없습니다. 새로운 사업을 등록해 주세요.</div>`}</div></div>`}
 function dueStatus(n,st){
  const due=String(n.due||'');
@@ -200,6 +218,102 @@ function detailStep(n,index){
  return `<div class="stage-card ${st}"><div class="stategroup"><span class="stepnum">STEP ${String(index+1).padStart(2,'0')}</span><button class="tick ${done?'done':''}" data-toggle="${esc(n.id)}" title="이 단계를 완료/미완료로 변경">${done?'✓':''}</button></div><button class="steptitle" data-select="${esc(n.id)}">${esc(n.title)}</button><div><span class="statepill ${st}">${needsFinalConfirmation(n,3)?'하위 완료 · 최종 확인 필요':stateText[st]}</span></div><div class="note">${esc(n.note||'메모를 등록할 수 있습니다.')}</div><div class="assign"><span>${owners.length?'담당 '+esc(owners.join(' · ')):'담당 미지정'}</span><span>${due?`마감 ${esc(n.due)}`:'기한 미지정'}</span></div>${due?.label?`<div class="stage-deadline ${due.kind}">${esc(due.label)}</div>`:''}${n.children.length?`<div class="stage-bottom"><strong>하위 단계 ${n.children.length}개</strong><div class="step-tree">${n.children.map(c=>substep(c)).join('')}</div></div>`:''}<button class="btn" data-add="${esc(n.id)}" style="font-size:10px;padding:8px">＋ 하위 단계 추가</button></div>`;
 }
 function renderDetail(){const p=current(),works=allWork(p);if(!p)return '<div class="empty">등록된 사업이 없습니다.</div>';if(!works.length)return `<div class="detail-pane"><div class="empty">아직 세부과업이 없습니다. 연결형 구조도에서 지원항목과 세부과업을 등록하세요.<div style="margin-top:13px"><button class="btn primary" data-view="map">구조도로 이동</button></div></div></div>`;let item=works.find(w=>w.work.id===focusId)||works[0];focusId=item.work.id;const w=item.work,c=item.category,s=stats(w,2),pr=rate(w,2);return `<div class="detail-pane"><div class="crumbs"><button data-view="dashboard">전체 사업</button> › <button data-view="map">${esc(p.title)}</button> › ${esc(c.title)} › <strong>${esc(w.title)}</strong></div><div class="detail-layout"><div class="work-list"><div class="list-heading">세부과업 선택 (${works.length})</div>${works.map(t=>`<button class="work-nav ${t.work.id===w.id?'active':''}" data-focus="${esc(t.work.id)}"><strong>${esc(t.work.title)}</strong><small>${esc(t.category.title)} · ${rate(t.work,2)}%</small></button>`).join('')}</div><div class="detail-main"><div class="detail-hero"><div><div class="eyebrow">${esc(c.title)} / WORKSTREAM</div><h2>${esc(w.title)}</h2><p>${esc(w.note||'연결된 실행단계를 왼쪽부터 순서대로 관리합니다.')}</p></div><div class="detail-progress"><strong>${pr}%</strong><small>${s.done}/${s.total}단계 완료</small><div class="progressbar" style="margin-top:10px"><div class="fill" style="width:${pr}%"></div></div></div></div><div class="detail-controls"><h3>실행단계 흐름</h3><button class="btn" data-select="${esc(w.id)}">✎ 세부과업 편집</button><button class="btn primary" data-add="${esc(w.id)}">＋ 실행단계 추가</button></div><div class="stage-scroll"><div class="stage-chain">${w.children.length?w.children.map(detailStep).join(''):`<div class="empty" style="min-width:350px">등록된 실행단계가 없습니다.<div style="margin-top:13px"><button class="btn primary" data-add="${esc(w.id)}">첫 단계 추가</button></div></div>`}</div></div><div class="detail-footnote">※ 실행단계의 완료 □를 클릭하면 자동 저장됩니다. 각 카드를 선택하면 오른쪽에서 담당자, 기한, 메모, 상태 및 하위 단계를 편집할 수 있습니다.</div></div></div></div>`}
+
+function mapPrintGraph(){
+ const temp=document.createElement('div');temp.innerHTML=renderMap();
+ const graph=temp.querySelector('#graph');
+ if(!graph)throw Error('출력할 연결형 구조도가 없습니다.');
+ let right=0,bottom=0;
+ graph.querySelectorAll('.graph-node').forEach(n=>{
+  right=Math.max(right,(parseFloat(n.style.left)||0)+(parseFloat(n.style.width)||0));
+  bottom=Math.max(bottom,(parseFloat(n.style.top)||0)+(parseFloat(n.style.height)||0));
+ });
+ const width=Math.max(300,Math.ceil(right+40)),height=Math.max(250,Math.ceil(bottom+45));
+ graph.removeAttribute('id');
+ graph.style.width=width+'px';graph.style.height=height+'px';graph.style.zoom='100%';
+ graph.querySelectorAll('button').forEach(b=>{b.disabled=true;b.tabIndex=-1});
+ return {html:graph.outerHTML,width,height};
+}
+function mapPrintPlan(w,h,preference='auto'){
+ const specs={A4:{name:'A4',paperW:297,paperH:210,usableW:277,usableH:176},A3:{name:'A3',paperW:420,paperH:297,usableW:400,usableH:263}};
+ const pxPerMm=96/25.4;
+ const test=name=>{
+  const z=specs[name],areaW=z.usableW*pxPerMm,areaH=z.usableH*pxPerMm;
+  const fit=Math.min(1.05,areaW/w,areaH/h);
+  if(fit>=0.82)return {...z,scale:fit,cols:1,rows:1,tiles:[{x:0,y:0}],width:w,height:h,onePage:true};
+  const scale=0.93,spanW=areaW/scale,spanH=areaH/scale,overlap=64;
+  const cols=Math.max(1,1+Math.ceil(Math.max(0,w-spanW)/Math.max(1,spanW-overlap)));
+  const rows=Math.max(1,1+Math.ceil(Math.max(0,h-spanH)/Math.max(1,spanH-overlap)));
+  const tiles=[];
+  for(let row=0;row<rows;row++)for(let col=0;col<cols;col++)
+   tiles.push({x:col*Math.max(1,spanW-overlap),y:row*Math.max(1,spanH-overlap)});
+  return {...z,scale,cols,rows,tiles,width:w,height:h,onePage:false};
+ };
+ const a4=test('A4'),a3=test('A3');
+ return preference==='A4'?a4:preference==='A3'?a3:a4.onePage?a4:a3;
+}
+function mapPrintSummary(){
+ if(!current())return;
+ const g=mapPrintGraph();
+ const plan=mapPrintPlan(g.width,g.height,$('#mapPrintPaper').value);
+ const count=plan.tiles.length;
+ $('#mapPrintSummary').innerHTML='<strong>추천 출력: '+plan.name+' 가로 · '+count+'장</strong><div>카드와 연결선을 '+(plan.onePage?'한 장에 맞춰 인쇄합니다.':'여러 장으로 나누어 인쇄합니다. 인접 페이지는 일부 겹치도록 배치됩니다.')+'</div><div>용지에 맞게 인쇄 미리보기가 열립니다. 브라우저 인쇄 설정에서도 <b>'+plan.name+' 가로</b>를 선택해 주세요.</div>';
+}
+function openMapPrintDialog(){
+ if(!current()){notify('먼저 사업을 선택해 주세요.');return}
+ $('#mapPrintPaper').value='auto';
+ $('#mapPrintBackdrop').classList.remove('hidden');
+ mapPrintSummary();
+}
+function closeMapPrintDialog(){$('#mapPrintBackdrop').classList.add('hidden')}
+function openMapPrintPreview(){
+ const g=mapPrintGraph(),plan=mapPrintPlan(g.width,g.height,$('#mapPrintPaper').value);
+ const preview=window.open('','_blank');
+ if(!preview){notify('인쇄 미리보기 팝업이 차단되었습니다. 이 사이트의 팝업을 허용해 주세요.');return}
+ const escTitle=esc(current().title);
+ const stylesheet=document.querySelector('style')?.textContent||'';
+ const sheets=plan.tiles.map((tile,i)=>{
+  const tx=-(tile.x*plan.scale).toFixed(2),ty=-(tile.y*plan.scale).toFixed(2);
+  return `<section class="map-sheet">
+    <div class="map-sheet-head"><div><strong>${escTitle}</strong><small>TaskFlow · 연결형 구조도</small></div><div class="map-sheet-meta">${plan.name} 가로 | ${i+1} / ${plan.tiles.length}</div></div>
+    <div class="map-sheet-viewport" style="width:${plan.usableW}mm;height:${plan.usableH}mm">
+     <div class="map-sheet-layer" style="transform:translate(${tx}px,${ty}px) scale(${plan.scale.toFixed(5)})">${g.html}</div>
+    </div>
+    <footer class="map-sheet-foot"><span>진행상태·완료 표시 기준 · 출력일 ${today()}</span><span>${plan.tiles.length>1?'분할 인쇄 · 인접 페이지 일부 겹침':'전체 구조도'}</span></footer>
+   </section>`;
+ }).join('');
+ const extraCss=`
+ @page{size:${plan.name} landscape;margin:0}
+ *{print-color-adjust:exact!important;-webkit-print-color-adjust:exact!important}
+ html,body{margin:0!important;padding:0!important;height:auto!important;overflow:visible!important;background:#e6ebf3!important}
+ .print-topbar{display:flex;gap:15px;align-items:center;justify-content:space-between;flex-wrap:wrap;max-width:900px;margin:18px auto;padding:15px 18px;background:white;border-radius:12px;border:1px solid #dae2ed;font:13px system-ui,sans-serif}
+ .print-topbar button{border:0;background:#4165e9;color:white;padding:12px 20px;border-radius:9px;font-weight:800;cursor:pointer}
+ .print-topbar p{margin:4px 0 0;color:#64748b;font-size:12px}
+ .map-sheet{width:${plan.paperW}mm;height:${plan.paperH}mm;position:relative;background:white;box-sizing:border-box;margin:18px auto;box-shadow:0 8px 28px #172f4a33;overflow:hidden;break-after:page;page-break-after:always}
+ .map-sheet:last-child{break-after:auto;page-break-after:auto}
+ .map-sheet-head{position:absolute;left:10mm;right:10mm;top:5mm;height:10mm;display:flex;align-items:center;justify-content:space-between;gap:15px;font-family:system-ui,"Malgun Gothic",sans-serif}
+ .map-sheet-head strong{font-size:14px;color:#18324f;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:270mm}
+ .map-sheet-head small{font-size:9px;color:#6e8097}
+ .map-sheet-meta{font-size:11px;white-space:nowrap;color:#53657d;font-weight:700}
+ .map-sheet-viewport{position:absolute;top:17mm;left:10mm;background:#f3f6fa;background-image:radial-gradient(#d0dce9 .7px,transparent .7px);background-size:18px 18px;overflow:hidden;border:1px solid #e1e7ee}
+ .map-sheet-layer{position:absolute;left:0;top:0;transform-origin:0 0;will-change:auto}
+ .map-sheet-layer .graph{zoom:100%!important}
+ .map-sheet-layer button{pointer-events:none!important}
+ .map-sheet-foot{position:absolute;left:10mm;right:10mm;bottom:4mm;display:flex;justify-content:space-between;color:#7a8999;font-size:9px;font-family:system-ui,"Malgun Gothic",sans-serif}
+ @media print{
+  html,body{background:white!important;width:auto!important;overflow:visible!important}
+  .print-topbar{display:none!important}
+  .map-sheet{margin:0!important;box-shadow:none!important;border:0!important;width:${plan.paperW}mm!important;height:${plan.paperH}mm!important}
+  .map-sheet-viewport{border:1px solid #e1e7ee}
+ }
+ `;
+ const doc=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>TaskFlow · 구조도 인쇄 · ${escTitle}</title><style>${stylesheet}</style><style>${extraCss}</style></head><body>
+ <div class="print-topbar"><div><strong>구조도 인쇄 · ${plan.name} 가로 · ${plan.tiles.length}장</strong><p>미리보기를 확인한 뒤 인쇄하세요. 용지 크기 및 방향은 인쇄창에서도 확인해 주세요.</p></div><button type="button" onclick="window.print()">인쇄 / PDF 저장</button></div>
+ ${sheets}</body></html>`;
+ preview.document.open();preview.document.write(doc);preview.document.close();
+ closeMapPrintDialog();
+}
+
 function printNested(n,depth=0){return `<div class="print-sub" style="padding-left:${depth*6}px">${stateOf(n,4+depth)==='done'?'☑':'□'} ${esc(n.title)}</div>${(n.children||[]).map(c=>printNested(c,depth+1)).join('')}`}
 function printHtml(){const p=current();if(!p)return '<div class="paper">사업이 없습니다.</div>';const s=stats(p);return `<div class="paper"><div class="print-head"><div><div class="eyebrow">TASKFLOW / PROJECT CHECKLIST</div><h2>${esc(p.title)}</h2><div class="sm">${esc(p.client||'기업명 미입력')}　|　출력일 ${today()}　|　※ 인쇄 후 빈칸에 직접 표시</div></div><div class="count">완료 ${s.done} / ${s.total}<div class="sm">단계별 체크시트</div></div></div>${(p.children||[]).map((cat,i)=>`<div class="print-group"><h3>${String(i+1).padStart(2,'0')}　${esc(cat.title)}　·　${(cat.children||[]).length}개 세부과업</h3>${(cat.children||[]).map((w,j)=>`<div class="print-work"><div class="print-work-title"><span>${i+1}-${j+1}. ${esc(w.title)}</span><small>${rate(w,2)}% 완료</small></div><div class="print-timeline">${(w.children||[]).map((step,k)=>`${k?'<span class="print-arrow">→</span>':''}<div class="print-step"><div class="print-step-head"><span class="print-check">${stateOf(step,3)==='done'?'✓':''}</span><span>${esc(step.title)}</span></div>${step.assignee||step.due?`<small>${step.assignee?'담당 '+esc(step.assignee):''} ${esc(step.due||'')}</small>`:''}${(step.children||[]).map(c=>printNested(c)).join('')}</div>`).join('')||'<span style="color:#8c98a9">등록된 실행단계 없음</span>'}</div></div>`).join('')||'<div style="padding:10px;color:#8896a7">세부과업을 등록하세요.</div>'}</div>`).join('')||'<div style="padding:25px">지원항목이 없습니다.</div>'}<div class="print-legend">□ 대기·진행 중·보류 / ✓ 완료　　• 완료 표시 이후 종이에서 추가로 체크하거나 펜으로 지울 수 있습니다.　　• 출력본은 선택된 사업만 포함합니다.</div></div>`}
 function inspectorStatusPanel(n,level,st){
@@ -325,17 +439,22 @@ function handleGlobalClick(e){const target=e.target;
  if(target.closest('#backupBtn')){download();return}
  if(target.closest('#restoreBtn')){$('#importFile').click();return}
  if(target.closest('#cloudBtn')){openCloud();return}
+ if(target.closest('#mapPrintButton')){openMapPrintDialog();return}
  if(target.closest('#printButton')||target.closest('#printInPreview')){window.print();return}
  if(target.closest('#zoomMinus')){zoom=Math.max(55,zoom-10);render();return}
  if(target.closest('#zoomPlus')){zoom=Math.min(125,zoom+10);render();return}
 }
 $('#app').addEventListener('click',handleGlobalClick);
 $('#content').addEventListener('input',e=>{if(e.target.id!=='projectSearch')return;query=e.target.value;const caret=e.target.selectionStart;const grid=$('#projectGrid');const t=document.createElement('div');t.innerHTML=renderDashboard();grid.innerHTML=t.querySelector('#projectGrid')?.innerHTML||'';e.target.setSelectionRange(caret,caret)});
+$('#mapPrintPaper').addEventListener('change',mapPrintSummary);
+$('#mapPrintCancel').addEventListener('click',closeMapPrintDialog);
+$('#mapPrintOpen').addEventListener('click',openMapPrintPreview);
+$('#mapPrintBackdrop').addEventListener('click',e=>{if(e.target.id==='mapPrintBackdrop')closeMapPrintDialog()});
 $('#duplicateForm').addEventListener('submit',e=>{e.preventDefault();makeDuplicate()});$('#duplicateCancel').addEventListener('click',closeDuplicate);$('#duplicateBackdrop').addEventListener('click',e=>{if(e.target.id==='duplicateBackdrop')closeDuplicate()});$('#entryForm').addEventListener('submit',e=>{e.preventDefault();makeEntry()});$('#entryCancel').addEventListener('click',closeEntry);$('#entryBackdrop').addEventListener('click',e=>{if(e.target.id==='entryBackdrop')closeEntry()});
 $('#importFile').addEventListener('change',e=>{importFile(e.target.files?.[0]);e.target.value='' });
 $('#cloudClose').addEventListener('click',closeCloud);$('#cloudBackdrop').addEventListener('click',e=>{if(e.target.id==='cloudBackdrop')closeCloud()});
 $('#cloudSignup').addEventListener('click',()=>cloudAction(cloudSignup));$('#cloudResend').addEventListener('click',()=>cloudAction(cloudResend));$('#cloudLogin').addEventListener('click',()=>cloudAction(cloudLogin));$('#cloudSync').addEventListener('click',()=>cloudAction(async()=>{storeConfig();await renewSession();if(!confirm('현재 기기의 데이터로 클라우드에 저장된 자료를 덮어씁니다. 계속할까요?')){updateCloudStatus('동기화 취소됨');return}await pushCloud();updateCloudStatus('현재 기기의 전체 사업을 클라우드에 저장했습니다.')}));$('#cloudLogout').addEventListener('click',()=>{clearTimeout(cloudTimer);session=null;cloudReady=false;sessionStorage.removeItem(SESSION_KEY);updateCloudStatus('로그아웃됨 · 로컬 데이터는 유지됩니다.');if(view==='admin')render();notify('클라우드에서 로그아웃했습니다.')});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeEntry();closeCloud();closeDuplicate();$('#app').classList.remove('show-side','show-inspector')}if(e.ctrlKey&&e.key==='Enter'&&e.target.closest('#inspector')){e.preventDefault();saveEdit()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeEntry();closeCloud();closeDuplicate();closeMapPrintDialog();$('#app').classList.remove('show-side','show-inspector')}if(e.ctrlKey&&e.key==='Enter'&&e.target.closest('#inspector')){e.preventDefault();saveEdit()}});
 window.addEventListener('storage',e=>{if(e.key===KEY&&e.newValue){try{projects=JSON.parse(e.newValue).map(p=>normalizeNode(p));render()}catch(err){}}});
 if(!localStorage.getItem(KEY))save();else if(session)$('#saveLabel').textContent='클라우드 로그인됨 · 재동기화 필요';render();
 })();
