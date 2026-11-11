@@ -154,7 +154,7 @@ function renderMap(){
   maxDepth=Math.max(maxDepth,depth);
   const children=n.children||[];
   const childBoxes=children.map((c,i)=>layout(c,depth+1,i));
-  const y=childBoxes.length?(childBoxes[0].y+childBoxes[childBoxes.length-1].y)/2:110+(leaf++)*148;
+  const y=childBoxes.length?(childBoxes[0].y+childBoxes[childBoxes.length-1].y)/2:110+(leaf++)*160;
   const r={n,depth,y,index};boxes.push(r);
   childBoxes.forEach(c=>edges.push([r,c]));
   return r;
@@ -168,7 +168,7 @@ function renderMap(){
  const html=boxes.map(b=>{
   const d=b.depth;
   const label=d===0?'사업 / 기업':d===1?'지원항목':d===2?'세부과업':d===3?`실행 ${String(b.index+1).padStart(2,'0')}`:`하위 ${d-3}단계 · ${String(b.index+1).padStart(2,'0')}`;
-  const h=d===0?112:d===1?90:d===2?112:122;
+  const hasMeta=d>=2&&(ownerNames(b.n).length>0||/^\d{4}-\d{2}-\d{2}$/.test(b.n.due||''));const h=d===0?112:d===1?90:d===2?(hasMeta?140:112):(hasMeta?142:112);
   return nodeCard(b.n,d===0?'root':d===1?'category':d===2?'work':'step',xFor(d),b.y-h/2,wFor(d),h,d,label);
  }).join('');
  return `<div class="map-pane" id="mapPane"><div class="floating-help">연결선을 따라 하위 단계를 확인하세요. 각 카드의 ＋ 버튼으로 하위 단계를 계속 추가할 수 있습니다. 세부과업의 ‘단계 보기’를 누르면 상세 관리로 이동합니다.</div><div class="map-scroll"><div class="graph" id="graph" style="width:${width}px;height:${height}px;zoom:${zoom}%"><svg viewBox="0 0 ${width} ${height}" aria-hidden="true">${lines}</svg>${html}</div></div></div>`;
