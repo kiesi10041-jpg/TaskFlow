@@ -61,7 +61,13 @@ const KEY='taskflow-v2-projects',OLD_KEY='taskflow-v1-local',SETTINGS_KEY='taskf
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),uid=()=>('n'+Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5));
 const today=()=>new Date().toLocaleDateString('sv-SE');
 const node=(title,children=[],note='')=>({id:uid(),title,status:'todo',children,note,assignee:'',due:''});
-function normalizeNode(n,depth=0){if(!n||typeof n!=='object'||depth>25)throw Error('올바르지 않은 데이터 구조');return {id:String(n.id||uid()),title:String(n.title||'제목 없음').slice(0,130),status:['todo','doing','blocked','done'].includes(n.status)?n.status:'todo',note:String(n.note||'').slice(0,20000),assignee:String(n.assignee||'').slice(0,200),due:String(n.due||'').slice(0,40),children:(Array.isArray(n.children)?n.children:[]).map(c=>normalizeNode(c,depth+1)),...(depth===0?{client:String(n.client||'').slice(0,100),createdAt:String(n.createdAt||today())}:{})}}
+function normalizeNode(n,depth=0){
+ if(!n||typeof n!=='object'||depth>25)throw Error('올바르지 않은 데이터 구조');
+ const children=(Array.isArray(n.children)?n.children:[]).map(c=>normalizeNode(c,depth+1));
+ let status=['todo','doing','blocked','done'].includes(n.status)?n.status:'todo';
+ if(depth>=3&&status==='done'&&children.some(c=>c.status!=='done'))status='todo';
+ return {id:String(n.id||uid()),title:String(n.title||'제목 없음').slice(0,130),status,note:String(n.note||'').slice(0,20000),assignee:String(n.assignee||'').slice(0,200),due:String(n.due||'').slice(0,40),children,...(depth===0?{client:String(n.client||'').slice(0,100),createdAt:String(n.createdAt||today())}:{})}
+}
 function getInitial(){try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
 let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=85,query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
 let cloudReady=false;let cfg=(()=>{try{return JSON.parse(localStorage.getItem(SETTINGS_KEY))||{}}catch(e){return {}}})();let session=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION_KEY))||null}catch(e){return null}})();
