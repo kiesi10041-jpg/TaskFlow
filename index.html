@@ -321,7 +321,7 @@ function openMapPrintPreview(){
   const tx=plan.onePage?Math.max(0,(plan.usableW*ppm-g.width*plan.scale)/2):-(tile.x*plan.scale);
   const ty=plan.onePage?Math.max(0,(plan.usableH*ppm-g.height*plan.scale)/2):-(tile.y*plan.scale);
   return `<section class="map-sheet">
-    <div class="map-sheet-head"><div><strong>${escTitle}</strong><small>TaskFlow · 연결형 구조도</small></div><div class="map-sheet-meta">${plan.name} 가로 | ${i+1} / ${plan.tiles.length}</div></div>
+    <div class="map-sheet-head"><div><strong>${escTitle}</strong><small>TaskFlow · 연결형 구조도</small></div><div class="map-sheet-meta">${plan.name} ${plan.orientation==='portrait'?'세로':'가로'} | ${i+1} / ${plan.tiles.length}</div></div>
     <div class="map-sheet-viewport" style="width:${plan.usableW}mm;height:${plan.usableH}mm">
      <div class="map-sheet-layer" style="transform:translate(${tx.toFixed(2)}px,${ty.toFixed(2)}px) scale(${plan.scale.toFixed(5)})">${g.html}</div>
     </div>
@@ -360,7 +360,7 @@ function openMapPrintPreview(){
  }
  `;
  const doc=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>TaskFlow · 구조도 인쇄 · ${escTitle}</title><style>${stylesheet}</style><style>${extraCss}</style></head><body>
- <div class="print-topbar"><div><strong>구조도 인쇄 · ${plan.name} 가로 · ${plan.tiles.length}장</strong><p>미리보기를 확인한 뒤 인쇄하세요. 인쇄창에서 용지 크기·가로 방향을 확인하고, 완료 카드의 색상이 필요하면 ‘배경 그래픽’을 켜 주세요.</p></div><button type="button" onclick="window.print()">인쇄 / PDF 저장</button></div>
+ <div class="print-topbar"><div><strong>구조도 인쇄 · ${plan.name} ${plan.orientation==='portrait'?'세로':'가로'} · ${plan.tiles.length}장</strong><p>미리보기를 확인한 뒤 인쇄하세요. 인쇄창에서 미리보기와 동일한 용지 크기·방향을 선택하고, 완료 카드의 색상이 필요하면 ‘배경 그래픽’을 켜 주세요.</p></div><button type="button" onclick="window.print()">인쇄 / PDF 저장</button></div>
  ${sheets}</body></html>`;
  preview.document.open();preview.document.write(doc);preview.document.close();
  closeMapPrintDialog();
