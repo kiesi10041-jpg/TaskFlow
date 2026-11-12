@@ -525,8 +525,9 @@ function makeEntry(){const name=$('#entryName').value.trim();if(!name||!entry)re
 function saveEdit(){
  const f=findNode(selectedId);if(!f)return;
  const t=$('#editName')?.value.trim();if(!t){notify('항목명을 입력해 주세요.');return}
+ if(f.level===0&&$('#editContractDate')?.value&&$('#editDeadline')?.value&&$('#editContractDate').value>$('#editDeadline').value){notify('마감일은 계약일보다 빠를 수 없습니다.');return}
  f.n.title=t;f.n.note=$('#editNote')?.value.trim()||'';
- if(f.level===0){f.n.client=$('#editCompany')?.value.trim()||'';f.n.contractDate=$('#editContractDate')?.value||'';f.n.deadline=$('#editDeadline')?.value||'';f.n.projectManager=$('#editProjectManager')?.value.trim().slice(0,80)||'';f.n.businessContact=$('#editBusinessContact')?.value.trim().slice(0,80)||'';f.n.businessPhone=$('#editBusinessPhone')?.value.trim().slice(0,80)||'';if(f.n.contractDate&&f.n.deadline&&f.n.contractDate>f.n.deadline){notify('마감일은 계약일보다 빠를 수 없습니다.');return}}
+ if(f.level===0){f.n.client=$('#editCompany')?.value.trim()||'';f.n.contractDate=$('#editContractDate')?.value||'';f.n.deadline=$('#editDeadline')?.value||'';f.n.projectManager=$('#editProjectManager')?.value.trim().slice(0,80)||'';f.n.businessContact=$('#editBusinessContact')?.value.trim().slice(0,80)||'';f.n.businessPhone=$('#editBusinessPhone')?.value.trim().slice(0,80)||''}
  if(f.level>=2){
   const owners=[...new Set(Array.from(document.querySelectorAll('#assigneeRows .assignee-entry')).map(el=>el.value.trim()).filter(Boolean))].slice(0,12);
   f.n.assignees=owners;
