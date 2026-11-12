@@ -92,6 +92,42 @@
 .cloud-assistance p{font-size:11px;color:#718099;line-height:1.65}
 .cloud-assistance .field{margin-top:12px}
 .cloud-foot-actions{justify-content:flex-end}
+
+/* Business-level contract dates, accountable PM and time-sensitive badges */
+.project-status{display:inline-flex;align-items:center;border-radius:6px;padding:5px 9px;font-size:10px;font-weight:850;white-space:nowrap;background:#edf2fa;color:#4f6585}
+.project-status.complete{background:#e1f5eb;color:#157858}
+.project-status.late{background:#ffe7ea;color:#b2263b}
+.project-status.urgent{background:#fff0da;color:#9d5d03}
+.project-status.soon{background:#fff6df;color:#967014}
+.project-status.active{background:#e9f2ff;color:#3763a6}
+.project-status.unset{background:#eef0f5;color:#768397}
+.project-due-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:0}
+.project-deadline-date{font-size:11px;color:#6f8199;font-weight:650}
+.project-meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;padding:12px;background:#f7f9fd;border:1px solid #edf1f6;border-radius:10px}
+.project-meta-cell{min-width:0;display:flex;flex-direction:column;gap:3px}
+.project-meta-cell span,.project-contact span{color:#8492a5;font-size:10px}
+.project-meta-cell strong,.project-contact strong{color:#32425c;font-size:11px;overflow-wrap:anywhere;font-weight:750}
+.project-contact{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-top:-5px;padding:0 3px}
+.project-card{min-height:315px;padding-bottom:52px}
+.project-card-wrap>.project-card{padding-bottom:54px}
+.sidebar-project-due{font-size:10px;display:block;width:max-content;max-width:100%;border-radius:5px;margin-top:7px;padding:3px 6px;font-weight:800;color:#adc2e0;background:#213958}
+.sidebar-project-due.late{background:#5b2636;color:#ffcbd3}
+.sidebar-project-due.urgent{background:#5c4023;color:#ffddb1}
+.sidebar-project-due.soon{background:#4f422d;color:#fff0a5}
+.sidebar-project-due.complete{background:#204c42;color:#bff2dc}
+.sidebar-project-due.active{background:#25446f;color:#d7e8ff}
+.project-info-fields{background:#f7f9fd;border:1px solid #e3eaf4;border-radius:11px;padding:14px;margin:12px 0 18px}
+.project-info-fields h3{font-size:12px;margin:0 0 13px;color:#304563}
+.project-info-fields .two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.project-info-fields .field{margin-bottom:10px;min-width:0}
+.project-info-fields .field input{min-width:0}
+.project-header-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.project-header-meta span{font-size:10px;font-weight:750;color:#527092;background:#eef3fa;border-radius:6px;padding:4px 8px}
+.project-header-meta .late{color:#ae2840;background:#ffe9ed}
+.project-header-meta .urgent{color:#91600b;background:#fff1da}
+.project-header-meta .soon{color:#8d751a;background:#fff6e1}
+.project-header-meta .complete{color:#127950;background:#e2f5eb}
+@media(max-width:600px){.project-meta-grid{grid-template-columns:1fr 1fr;gap:8px}.project-card{padding:15px}}
 </style>
 </head>
 <body>
@@ -159,13 +195,29 @@ function ownerNames(n){
  const source=Array.isArray(n.assignees)&&n.assignees.length?n.assignees:String(n.assignee||'').split(/[,;，\n]+/);
  return [...new Set(source.map(x=>String(x||'').trim()).filter(Boolean))].slice(0,12);
 }
+function projectDeadlineState(p){
+ const summary=stats(p),end=String(p.deadline||'').trim();
+ if(summary.total>0&&summary.done===summary.total)return {kind:'complete',label:'완료',short:'완료',days:null};
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(end))return {kind:'unset',label:'마감일 미입력',short:'기한 미입력',days:null};
+ const [y,m,d]=end.split('-').map(Number),[ty,tm,td]=today().split('-').map(Number);
+ const diff=Math.round((Date.UTC(y,m-1,d)-Date.UTC(ty,tm-1,td))/86400000);
+ if(diff<0)return {kind:'late',label:`지연 ${-diff}일`,short:'지연',days:diff};
+ if(diff<=3)return {kind:'urgent',label:diff===0?'긴급 · 오늘 마감':`긴급 · D-${diff}`,short:'긴급',days:diff};
+ if(diff<=7)return {kind:'soon',label:`임박 · D-${diff}`,short:'임박',days:diff};
+ return {kind:'active',label:`진행 중 · D-${diff}`,short:'진행 중',days:diff};
+}
+function projectMetaHtml(p){
+ const labels=[['계약일',p.contractDate],['마감일',p.deadline],['담당 PM',p.projectManager],['사업 담당자',p.businessContact]];
+ const items=labels.map(([label,value])=>`<div class="project-meta-cell"><span>${label}</span><strong>${esc(value||'미입력')}</strong></div>`).join('');
+ return `<div class="project-meta-grid">${items}</div><div class="project-contact"><span>담당자 연락처</span><strong>${esc(p.businessPhone||'미입력')}</strong></div>`;
+}
 function normalizeNode(n,depth=0){
  if(!n||typeof n!=='object'||depth>25)throw Error('올바르지 않은 데이터 구조');
  const children=(Array.isArray(n.children)?n.children:[]).map(c=>normalizeNode(c,depth+1));
  let status=['todo','doing','blocked','done'].includes(n.status)?n.status:'todo';
  if(depth>=3&&status==='done'&&children.some(c=>c.status!=='done'))status='todo';
  const assignees=ownerNames(n);
- return {id:String(n.id||uid()),title:String(n.title||'제목 없음').slice(0,130),status,note:String(n.note||'').slice(0,20000),assignee:assignees.join(', ').slice(0,400),assignees,due:String(n.due||'').slice(0,40),children,...(depth===0?{client:String(n.client||'').slice(0,100),createdAt:String(n.createdAt||today())}:{})};
+ return {id:String(n.id||uid()),title:String(n.title||'제목 없음').slice(0,130),status,note:String(n.note||'').slice(0,20000),assignee:assignees.join(', ').slice(0,400),assignees,due:String(n.due||'').slice(0,40),children,...(depth===0?{client:String(n.client||'').slice(0,100),createdAt:String(n.createdAt||today()),contractDate:String(n.contractDate||'').slice(0,10),deadline:String(n.deadline||'').slice(0,10),projectManager:String(n.projectManager||'').slice(0,80),businessContact:String(n.businessContact||'').slice(0,80),businessPhone:String(n.businessPhone||'').slice(0,80)}:{})};
 }
 function getInitial(){try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
 let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=85,query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
@@ -188,9 +240,16 @@ function setProject(id,next='map'){if(!projects.some(p=>p.id===id))return;curren
 function changeView(to){if(to!=='dashboard'&&to!=='admin'&&!current()){view='dashboard'}else view=to;if(view==='admin')setInspectorOpen(false);if(view==='detail'&&(!focusId||!findNode(focusId)))focusId=allWork(current())[0]?.work.id||null;$('#app').classList.remove('show-side');render()}
 function setInspectorOpen(open){const app=$('#app');app.classList.toggle('inspector-closed',!open);app.classList.toggle('show-inspector',!!open);const btn=$('#editInspector');if(btn){btn.textContent=open?'✕ 패널 닫기':'✎ 항목 편집';btn.setAttribute('aria-expanded',String(!!open))}}
 function titleFor(){return {admin:'관리자 설정',dashboard:'전체 사업 통합 현황',map:current()?.title||'연결형 과업도',detail:current()?.title||'세부 진행단계',print:current()?.title||'A4 출력 체크시트'}[view]}
-function renderSidebar(){const p=current();$('#sideCount').textContent=projects.length;$('#allProjectButton').classList.toggle('active',view==='dashboard');$('#adminMenu').classList.toggle('active',view==='admin');$('#projectList').innerHTML=projects.map(x=>`<button class="project-nav ${x.id===p?.id&&view!=='dashboard'&&view!=='admin'?'active':''}" data-project="${esc(x.id)}"><i class="dot"></i><span class="navname">${esc(x.title)}<small>${allWork(x).length}개 세부과업 · ${rate(x)}% 완료</small></span></button>`).join('')}
+function renderSidebar(){const p=current();$('#sideCount').textContent=projects.length;$('#allProjectButton').classList.toggle('active',view==='dashboard');$('#adminMenu').classList.toggle('active',view==='admin');$('#projectList').innerHTML=projects.map(x=>{const d=projectDeadlineState(x);return `<button class="project-nav ${x.id===p?.id&&view!=='dashboard'&&view!=='admin'?'active':''}" data-project="${esc(x.id)}"><i class="dot"></i><span class="navname">${esc(x.title)}<small>${allWork(x).length}개 세부과업 · ${rate(x)}% 완료</small><span class="sidebar-project-due ${d.kind}">${esc(d.label)}${x.deadline?' · '+esc(x.deadline.slice(5).replace('-','.')):''}</span></span></button>`}).join('')}
 function renderHead(){const p=current(),s=(view==='dashboard'||view==='admin')?aggregate():stats(p);$('#pageEyebrow').textContent=view==='admin'?'PERSONAL ADMIN':view==='dashboard'?'PORTFOLIO OVERVIEW':view==='map'?'CONNECTED TASK MAP':view==='detail'?'WORKSTREAM PROGRESS':'A4 CHECKLIST';$('#pageTitle').textContent=titleFor();$('#pageSub').textContent=view==='admin'?'본인 계정과 클라우드 저장 상태를 관리합니다.':view==='dashboard'?'여러 사업의 진행현황을 확인하고 개별 사업으로 이동하세요.':view==='map'?'사업 → 지원항목 → 세부과업 → 실행단계가 선으로 연결됩니다.':view==='detail'?'세부과업을 선택하여 실행단계를 순서대로 관리합니다.':'현재 선택한 사업의 세부과업을 A4 가로 형식으로 출력합니다.';$('#doneNum').textContent=s.done;$('#totalNum').textContent=s.total;$('#progressNum').textContent=s.total?Math.round(100*s.done/s.total)+'%':'0%';for(const name of ['Dashboard','Map','Detail','Paper'])$('#tab'+name).classList.toggle('active',view===({Dashboard:'dashboard',Map:'map',Detail:'detail',Paper:'print'}[name]));$('.toolbar .tabs').classList.toggle('hidden',view==='admin');$('#zoomTools').classList.toggle('hidden',view!=='map');$('#zoomValue').textContent=zoom+'%';$('#editInspector').classList.toggle('hidden',view==='dashboard'||view==='admin');const inspectorVisible=window.innerWidth<=970?$('#app').classList.contains('show-inspector'):!$('#app').classList.contains('inspector-closed');$('#editInspector').textContent=inspectorVisible?'✕ 패널 닫기':'✎ 항목 편집';$('#editInspector').setAttribute('aria-expanded',String(inspectorVisible));$('#duplicateCurrent').classList.toggle('hidden',view==='dashboard'||view==='admin');$('#mapPrintButton').classList.toggle('hidden',view!=='map');$('#printButton').classList.toggle('hidden',view==='dashboard'||view==='admin')}
-function renderDashboard(){const a=aggregate();let list=projects.filter(p=>(p.title+' '+p.client+' '+p.note).toLowerCase().includes(query.toLowerCase()));return `<div class="dashboard"><div class="dashboard-kpis"><div class="kpicard"><span>등록된 사업</span><strong>${projects.length}</strong><small>독립적으로 관리하는 전체 사업</small></div><div class="kpicard"><span>세부과업</span><strong>${a.work}</strong><small>사업별 실행 과업 수</small></div><div class="kpicard"><span>전체 실행단계</span><strong>${a.total}</strong><small>하위 단계까지 합산</small></div><div class="kpicard"><span>완료한 단계</span><strong style="color:var(--green)">${a.done}</strong><small>진행 중 ${a.doing} · 보류 ${a.blocked}</small></div></div><div class="sectionline"><div><h2>사업별 진행현황</h2><p>사업을 선택하면 별도의 도식형 흐름도를 열 수 있습니다.</p></div><input class="search" id="projectSearch" value="${esc(query)}" placeholder="사업명·기업명 검색"></div><div class="project-grid" id="projectGrid">${list.map(p=>{const w=allWork(p),s=stats(p),pr=rate(p);return `<div class="project-card-wrap"><button class="project-card" data-project="${esc(p.id)}"><div class="project-card-head"><div><h3>${esc(p.title)}</h3><div class="client">${esc(p.client||'기업명 미입력')}</div></div><span class="tag">${pr}% 완료</span></div><div class="branches">${(p.children||[]).map(c=>`<span class="branch">${esc(c.title)} · ${(c.children||[]).length}개</span>`).join('')||'<span class="branch">지원항목 추가 필요</span>'}</div><div class="progressbar"><div class="fill" style="width:${pr}%"></div></div><div class="cardbottom"><span>${w.length}개 세부과업 · ${s.done}/${s.total}단계 완료</span><strong>구조도 열기 →</strong></div></button><button class="duplicate-shortcut" type="button" data-duplicate="${esc(p.id)}">⧉ 사업 복제</button></div>`}).join('')||`<div class="empty" style="grid-column:1/-1">검색된 사업이 없습니다. 새로운 사업을 등록해 주세요.</div>`}</div></div>`}
+function renderDashboard(){
+ const a=aggregate();
+ const list=projects.filter(p=>[p.title,p.client,p.note,p.projectManager,p.businessContact,p.businessPhone].join(' ').toLowerCase().includes(query.toLowerCase()));
+ return `<div class="dashboard"><div class="dashboard-kpis"><div class="kpicard"><span>등록된 사업</span><strong>${projects.length}</strong><small>독립적으로 관리하는 전체 사업</small></div><div class="kpicard"><span>세부과업</span><strong>${a.work}</strong><small>사업별 실행 과업 수</small></div><div class="kpicard"><span>전체 실행단계</span><strong>${a.total}</strong><small>하위 단계까지 합산</small></div><div class="kpicard"><span>완료한 단계</span><strong style="color:var(--green)">${a.done}</strong><small>진행 중 ${a.doing} · 보류 ${a.blocked}</small></div></div><div class="sectionline"><div><h2>사업별 진행현황</h2><p>계약 일정, 책임자, 마감상태와 과업 진행률을 확인할 수 있습니다.</p></div><input class="search" id="projectSearch" value="${esc(query)}" placeholder="사업명·기업명·담당자 검색"></div><div class="project-grid" id="projectGrid">${list.map(p=>{
+ const w=allWork(p),st=stats(p),progress=rate(p),due=projectDeadlineState(p);
+ return `<div class="project-card-wrap"><button class="project-card" data-project="${esc(p.id)}"><div class="project-card-head"><div><h3>${esc(p.title)}</h3><div class="client">${esc(p.client||'기업명 미입력')}</div></div><span class="tag">${progress}% 완료</span></div><div class="project-due-row"><span class="project-status ${due.kind}">${esc(due.label)}</span>${p.deadline?`<span class="project-deadline-date">마감 ${esc(p.deadline)}</span>`:''}</div>${projectMetaHtml(p)}<div class="branches">${(p.children||[]).map(c=>`<span class="branch">${esc(c.title)} · ${(c.children||[]).length}개</span>`).join('')||'<span class="branch">지원항목 추가 필요</span>'}</div><div class="progressbar"><div class="fill" style="width:${progress}%"></div></div><div class="cardbottom"><span>${w.length}개 세부과업 · ${st.done}/${st.total}단계 완료</span><strong>구조도 열기 →</strong></div></button><button class="duplicate-shortcut" type="button" data-duplicate="${esc(p.id)}">⧉ 사업 복제</button></div>`;
+ }).join('')||`<div class="empty" style="grid-column:1/-1">검색된 사업이 없습니다. 새로운 사업을 등록해 주세요.</div>`}</div></div>`;
+}
 function dueStatus(n,st){
  const due=String(n.due||'');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(due))return null;
