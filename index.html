@@ -75,6 +75,23 @@
 .map-print-modal .field select{width:100%;padding:12px;border:1px solid #dce5f1;border-radius:10px;background:white;color:var(--ink)}
 .map-print-note{border:1px solid #dbe6f4;border-radius:10px;background:#f4f7fc;padding:14px 16px;font-size:12px;line-height:1.7;color:#405775;margin-top:12px}
 .map-print-note strong{color:#22446f}
+
+.cloud-modal{max-width:485px}
+.cloud-modal .cloud-intro{font-size:12px;line-height:1.65;margin:4px 0 18px}
+.cloud-user{display:flex;gap:12px;align-items:center;background:#f1f8f4;border:1px solid #cee7d7;border-radius:12px;padding:15px;margin:16px 0}
+.cloud-user-mark{width:34px;height:34px;display:grid;place-items:center;background:#1a9c70;border-radius:50%;color:white;font-weight:900}
+.cloud-user strong{font-size:13px;color:#215d45}
+.cloud-user p{font-size:12px;color:#43725d;margin:4px 0 0;overflow-wrap:anywhere}
+.cloud-remember{display:flex;gap:9px;align-items:center;cursor:pointer;font-size:12px;font-weight:750;color:#3c4f6b;margin:3px 0 15px}
+.cloud-remember input{accent-color:#4668e9;width:17px;height:17px;flex-shrink:0}
+.cloud-remember small{display:block;font-size:10px;font-weight:400;color:#7c8ca0;margin-top:3px}
+.cloud-submit{width:100%;padding:13px!important;font-size:13px!important}
+.cloud-assistance{margin-top:16px;padding:12px 14px;border:1px solid #e2e8f1;background:#fbfcfe;border-radius:10px}
+.cloud-assistance summary{cursor:pointer;font-size:11px;font-weight:800;color:#697b95}
+.cloud-assistance .modal-actions{margin-top:14px}
+.cloud-assistance p{font-size:11px;color:#718099;line-height:1.65}
+.cloud-assistance .field{margin-top:12px}
+.cloud-foot-actions{justify-content:flex-end}
 </style>
 </head>
 <body>
@@ -96,7 +113,29 @@
 </div>
 <div class="print-only" id="printRoot"></div>
 <div class="backdrop hidden" id="entryBackdrop" role="dialog" aria-modal="true" aria-labelledby="entryTitle"><form class="modal" id="entryForm"><h2 id="entryTitle">새 항목</h2><p id="entrySub">과업을 등록합니다.</p><label class="field"><span>명칭 *</span><input id="entryName" maxlength="130" required placeholder="항목명을 입력하세요"></label><label class="field" id="companyWrap"><span>기업명 / 발주처 (선택)</span><input id="entryCompany" maxlength="100" placeholder="예: 업체명 또는 발주처"></label><label class="field"><span>설명 / 메모 (선택)</span><textarea id="entryNote" placeholder="수행 범위, 담당자, 요청사항 등을 입력하세요"></textarea></label><div class="modal-actions"><button class="btn" type="button" id="entryCancel">취소</button><button class="btn primary" type="submit">등록하기</button></div></form></div>
-<div class="backdrop hidden" id="cloudBackdrop" role="dialog" aria-modal="true" aria-labelledby="cloudTitle"><div class="modal"><h2 id="cloudTitle">☁ Supabase 클라우드 연동</h2><p>선택 기능입니다. Supabase 프로젝트에서 별도로 데이터베이스와 로그인 계정을 준비하면 여러 기기에서 동일한 사업 데이터를 관리할 수 있습니다. 준비 전에도 기기 내 저장은 정상 작동합니다.</p><div class="field"><span>Supabase 프로젝트 URL</span><input id="cloudUrl" placeholder="https://xxxx.supabase.co"></div><div class="field"><span>Publishable key 또는 anon key</span><input id="cloudKey" placeholder="sb_publishable_... 또는 eyJ..."></div><div class="field"><span>이메일</span><input id="cloudEmail" type="email" placeholder="example@company.com"></div><div class="field"><span>비밀번호</span><input id="cloudPassword" type="password" autocomplete="current-password" placeholder="비밀번호"></div><div class="cloud-status" id="cloudStatus">기기 내 저장 모드</div><div class="modal-actions" style="flex-wrap:wrap"><button class="btn" id="cloudClose" type="button">닫기</button><button class="btn" id="cloudSignup" type="button">계정 등록</button><button class="btn" id="cloudResend" type="button">인증 메일 재발송</button><button class="btn" id="cloudLogin" type="button">로그인</button><button class="btn verylight" id="cloudSync" type="button">지금 동기화</button><button class="btn danger" id="cloudLogout" type="button">로그아웃</button></div></div></div>
+<div class="backdrop hidden" id="cloudBackdrop" role="dialog" aria-modal="true" aria-labelledby="cloudTitle">
+ <div class="modal cloud-modal">
+  <h2 id="cloudTitle">TaskFlow 계정</h2>
+  <p class="cloud-intro">같은 계정으로 접속하면 여러 기기에서 프로젝트를 관리할 수 있습니다.</p>
+  <div class="cloud-user hidden" id="cloudUserInfo"><div class="cloud-user-mark">✓</div><div><strong>로그인된 계정</strong><p id="cloudUserEmail"></p></div></div>
+  <div id="cloudLoginFields">
+   <label class="field"><span>이메일</span><input id="cloudEmail" type="email" autocomplete="username" placeholder="이메일 주소"></label>
+   <label class="field"><span>비밀번호</span><input id="cloudPassword" type="password" autocomplete="current-password" placeholder="비밀번호"></label>
+   <label class="cloud-remember"><input id="cloudRemember" type="checkbox" checked><span>이 기기에서 로그인 유지<small>개인 PC에서만 사용하세요.</small></span></label>
+   <button class="btn primary cloud-submit" id="cloudLogin" type="button">로그인</button>
+   <details class="cloud-assistance" id="cloudAccountHelp"><summary>계정 등록 또는 인증 메일 관련 도움</summary>
+    <div class="modal-actions"><button class="btn" id="cloudSignup" type="button">계정 등록</button><button class="btn" id="cloudResend" type="button">인증 메일 재발송</button></div>
+   </details>
+  </div>
+  <details class="cloud-assistance cloud-advanced" id="cloudAdvanced"><summary>연결 설정 (최초 설정 또는 오류 발생 시)</summary>
+   <p>Supabase 프로젝트에서 받은 URL과 Publishable key만 입력합니다. Secret key는 사용하지 마세요.</p>
+   <label class="field"><span>Supabase 프로젝트 URL</span><input id="cloudUrl" placeholder="https://xxxx.supabase.co"></label>
+   <label class="field"><span>Publishable key 또는 anon key</span><input id="cloudKey" placeholder="sb_publishable_..."></label>
+  </details>
+  <div class="cloud-status" id="cloudStatus">계정 상태를 확인하세요.</div>
+  <div class="modal-actions cloud-foot-actions"><button class="btn" id="cloudClose" type="button">닫기</button><button class="btn danger hidden" id="cloudLogout" type="button">로그아웃</button></div>
+ </div>
+</div>
 <div class="backdrop hidden" id="duplicateBackdrop" role="dialog" aria-modal="true" aria-labelledby="duplicateTitle"><form class="modal" id="duplicateForm"><h2 id="duplicateTitle">⧉ 기존 사업 복제</h2><p>선택한 사업의 지원항목, 세부과업, 모든 하위 실행단계를 새 사업으로 복사합니다. 원본은 그대로 유지됩니다.</p><label class="field"><span>새 사업명 *</span><input id="duplicateName" maxlength="130" required></label><label class="field"><span>업체명 / 발주처</span><input id="duplicateClient" maxlength="100"></label><label class="field"><span>복제 방식</span><select id="duplicateMode"><option value="reset">구조만 복제 (상태·메모·담당자·기한 초기화)</option><option value="all">전체 복제 (기존 진행상태·기록까지 유지)</option></select></label><div class="admin-notice">새 업체에 적용할 때는 구조만 복제를 권장합니다. 기존 업체의 수행실적이나 메모가 섞이지 않습니다.</div><div class="modal-actions"><button class="btn" type="button" id="duplicateCancel">취소</button><button class="btn primary" type="submit">새 사업으로 복제</button></div></form></div><div class="backdrop hidden" id="mapPrintBackdrop" role="dialog" aria-modal="true" aria-labelledby="mapPrintTitle">
  <div class="modal map-print-modal">
   <h2 id="mapPrintTitle">연결형 구조도 인쇄</h2>
@@ -507,8 +546,17 @@ function validCfg(){return /^https:\/\/[a-z0-9.-]+\.supabase\.co\/?$/i.test((cfg
 function authHeaders(extra={}){return {'apikey':cfg.key,'Content-Type':'application/json',...(session?.access_token?{'Authorization':'Bearer '+session.access_token}:{}),...extra}}
 async function cloudRequest(path,method='GET',body=null,extra={}){if(!validCfg())throw Error('유효한 Supabase 프로젝트 URL과 키를 입력하세요.');if(!path.startsWith('/auth/v1/')&&session?.refresh_token&&(!session.expires_at||Number(session.expires_at)*1000-Date.now()<90000))await renewSession();const base=cfg.url.replace(/\/$/,'');const r=await fetch(base+path,{method,headers:authHeaders(extra),...(body!==null?{body:JSON.stringify(body)}:{})});const raw=await r.text();let data;try{data=raw?JSON.parse(raw):null}catch(e){data=raw}if(!r.ok)throw Error(typeof data==='object'?(data?.msg||data?.error_description||data?.message||data?.error||`HTTP ${r.status}`):`HTTP ${r.status}`);return data}
 function storeConfig(){cfg.url=$('#cloudUrl').value.trim();cfg.key=$('#cloudKey').value.trim();localStorage.setItem(SETTINGS_KEY,JSON.stringify(cfg))}
-function updateCloudStatus(text){$('#cloudStatus').textContent=text;$('#saveLabel').textContent=cloudReady?'기기 + 클라우드 연결':session?'기기 저장됨 · 클라우드 확인 필요':'이 기기에 자동 저장'}
-function openCloud(){$('#cloudUrl').value=cfg.url||'';$('#cloudKey').value=cfg.key||'';$('#cloudEmail').value='';$('#cloudPassword').value='';updateCloudStatus(session?'로그인됨 · 사용자 '+(session.user?.email||'')+' · 동기화 사용 가능':'기기 내 저장 중. 데이터베이스 설정 후 로그인하면 클라우드로 저장할 수 있습니다.');$('#cloudBackdrop').classList.remove('hidden')}
+function updateCloudUI(){
+ const signed=!!session?.user?.id;
+ $('#cloudUserInfo').classList.toggle('hidden',!signed);
+ $('#cloudLoginFields').classList.toggle('hidden',signed);
+ $('#cloudLogout').classList.toggle('hidden',!signed);
+ $('#cloudUserEmail').textContent=signed?(session.user.email||'계정 확인 중'):'';
+ $('#cloudAdvanced').classList.toggle('hidden',signed);
+ if(!signed&&!validCfg())$('#cloudAdvanced').open=true;
+}
+function updateCloudStatus(text){$('#cloudStatus').textContent=text;$('#saveLabel').textContent=cloudReady?'기기 + 클라우드 연결':session?'기기 저장됨 · 클라우드 확인 필요':'이 기기에 자동 저장';updateCloudUI()}
+function openCloud(){$('#cloudUrl').value=cfg.url||'';$('#cloudKey').value=cfg.key||'';$('#cloudRemember').checked=localStorage.getItem(REMEMBER_KEY)!=='0';$('#cloudEmail').value='';$('#cloudPassword').value='';$('#cloudAdvanced').open=!validCfg();updateCloudStatus(session?'로그인된 계정입니다. 프로젝트는 변경 시 자동으로 동기화됩니다.':'이메일과 비밀번호로 로그인해 주세요.');$('#cloudBackdrop').classList.remove('hidden')}
 function closeCloud(){$('#cloudBackdrop').classList.add('hidden')}
 async function cloudSignup(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/signup','POST',{email,password});if(r.access_token){localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');persistSession(r)}updateCloudStatus('계정을 등록했습니다. 이메일 인증이 필요할 수 있습니다. 인증 후 로그인해 주세요.')}
 async function cloudResend(){storeConfig();const email=$('#cloudEmail').value.trim();if(!email)throw Error('가입할 때 사용한 이메일을 입력해주세요.');await cloudRequest('/auth/v1/resend','POST',{type:'signup',email});updateCloudStatus('인증 메일 재발송을 요청했습니다. 새로 도착한 메일을 열어 인증한 뒤 로그인하세요. 메일이 없으면 스팸함도 확인하세요.')}
@@ -557,7 +605,7 @@ $('#mapPrintBackdrop').addEventListener('click',e=>{if(e.target.id==='mapPrintBa
 $('#duplicateForm').addEventListener('submit',e=>{e.preventDefault();makeDuplicate()});$('#duplicateCancel').addEventListener('click',closeDuplicate);$('#duplicateBackdrop').addEventListener('click',e=>{if(e.target.id==='duplicateBackdrop')closeDuplicate()});$('#entryForm').addEventListener('submit',e=>{e.preventDefault();makeEntry()});$('#entryCancel').addEventListener('click',closeEntry);$('#entryBackdrop').addEventListener('click',e=>{if(e.target.id==='entryBackdrop')closeEntry()});
 $('#importFile').addEventListener('change',e=>{importFile(e.target.files?.[0]);e.target.value='' });
 $('#cloudClose').addEventListener('click',closeCloud);$('#cloudBackdrop').addEventListener('click',e=>{if(e.target.id==='cloudBackdrop')closeCloud()});
-$('#cloudSignup').addEventListener('click',()=>cloudAction(cloudSignup));$('#cloudResend').addEventListener('click',()=>cloudAction(cloudResend));$('#cloudLogin').addEventListener('click',()=>cloudAction(cloudLogin));$('#cloudSync').addEventListener('click',()=>cloudAction(async()=>{storeConfig();await renewSession();if(!confirm('현재 기기의 데이터로 클라우드에 저장된 자료를 덮어씁니다. 계속할까요?')){updateCloudStatus('동기화 취소됨');return}await pushCloud();updateCloudStatus('현재 기기의 전체 사업을 클라우드에 저장했습니다.')}));$('#cloudLogout').addEventListener('click',()=>{clearSavedSession();updateCloudStatus('로그아웃됨 · 로컬 데이터는 유지됩니다.');if(view==='admin')render();notify('클라우드에서 로그아웃했습니다.')});
+$('#cloudSignup').addEventListener('click',()=>cloudAction(cloudSignup));$('#cloudResend').addEventListener('click',()=>cloudAction(cloudResend));$('#cloudRemember').addEventListener('change',e=>{localStorage.setItem(REMEMBER_KEY,e.target.checked?'1':'0');if(session?.refresh_token)persistSession(session)});$('#cloudLogin').addEventListener('click',()=>cloudAction(cloudLogin));$('#cloudLogout').addEventListener('click',()=>{clearSavedSession();updateCloudStatus('로그아웃됨 · 로컬 데이터는 유지됩니다.');if(view==='admin')render();notify('클라우드에서 로그아웃했습니다.')});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeEntry();closeCloud();closeDuplicate();closeMapPrintDialog();$('#app').classList.remove('show-side','show-inspector')}if(e.ctrlKey&&e.key==='Enter'&&e.target.closest('#inspector')){e.preventDefault();saveEdit()}});
 window.addEventListener('storage',e=>{if(e.key===KEY&&e.newValue){try{projects=JSON.parse(e.newValue).map(p=>normalizeNode(p));render()}catch(err){}}});
 if(!localStorage.getItem(KEY))save();else if(session)$('#saveLabel').textContent='저장된 로그인 정보 확인 중';render();if(session?.refresh_token)restoreCloudLogin();
