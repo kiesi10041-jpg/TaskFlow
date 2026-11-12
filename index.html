@@ -128,6 +128,29 @@
 .project-header-meta .soon{color:#8d751a;background:#fff6e1}
 .project-header-meta .complete{color:#127950;background:#e2f5eb}
 @media(max-width:600px){.project-meta-grid{grid-template-columns:1fr 1fr;gap:8px}.project-card{padding:15px}}
+
+/* 통합 사업 진행상태: 완료 / 진행 중 / 보류 / 대기 */
+.portfolio-status{border:1px solid #e1e8f1;border-radius:15px;background:#fff;box-shadow:var(--shadow);padding:21px 23px;margin:-9px 0 30px}
+.portfolio-status-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}
+.portfolio-status-head h2{font-size:16px;font-weight:850;letter-spacing:-.35px;margin:0 0 6px}
+.portfolio-status-head p,.portfolio-status-foot{font-size:11px;line-height:1.6;color:#8491a4;margin:0}
+.portfolio-status-totals{display:flex;align-items:baseline;flex-wrap:wrap;gap:15px;flex-shrink:0;font-size:11px;color:#71819a;font-weight:750}
+.portfolio-status-totals b{font-size:21px;letter-spacing:-.6px;margin-right:3px}
+.portfolio-status-totals b.done{color:#139875}.portfolio-status-totals b.incomplete{color:#b46a21}
+.portfolio-bar{height:15px;width:100%;border-radius:30px;overflow:hidden;background:#edf2f7;display:flex;margin-bottom:15px}
+.portfolio-bar-segment{height:100%;min-width:0;flex-shrink:0}
+.portfolio-bar-segment.done{background:#20a381}.portfolio-bar-segment.doing{background:#5e81df}.portfolio-bar-segment.blocked{background:#dc916a}.portfolio-bar-segment.todo{background:#c6d0df}.portfolio-bar-segment.empty{background:#edf2f7}
+.portfolio-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.portfolio-status-item{min-width:0;border:1px solid #e7edf5;border-radius:10px;padding:10px 12px;background:#f9fbfe}
+.portfolio-status-label{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#5b6d87}
+.portfolio-status-label i{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#c6d0df}
+.portfolio-status-item.done .portfolio-status-label i{background:#20a381}
+.portfolio-status-item.doing .portfolio-status-label i{background:#5e81df}
+.portfolio-status-item.blocked .portfolio-status-label i{background:#dc916a}
+.portfolio-status-item strong{display:block;font-size:21px;color:#243954;margin-top:5px}
+.portfolio-status-item small{font-size:10px;color:#8492a5}
+@media(max-width:780px){.portfolio-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.portfolio-status-head{flex-direction:column}.portfolio-status-totals{gap:16px}}
+@media(max-width:420px){.portfolio-status{padding:16px}.portfolio-status-item{padding:9px}}
 </style>
 </head>
 <body>
@@ -247,10 +270,32 @@ function setInspectorOpen(open){const app=$('#app');app.classList.toggle('inspec
 function titleFor(){return {admin:'관리자 설정',dashboard:'전체 사업 통합 현황',map:current()?.title||'연결형 과업도',detail:current()?.title||'세부 진행단계',print:current()?.title||'A4 출력 체크시트'}[view]}
 function renderSidebar(){const p=current();$('#sideCount').textContent=projects.length;$('#allProjectButton').classList.toggle('active',view==='dashboard');$('#adminMenu').classList.toggle('active',view==='admin');$('#projectList').innerHTML=projects.map(x=>{const d=projectDeadlineState(x);return `<button class="project-nav ${x.id===p?.id&&view!=='dashboard'&&view!=='admin'?'active':''}" data-project="${esc(x.id)}"><i class="dot"></i><span class="navname">${esc(x.title)}<small>${allWork(x).length}개 세부과업 · ${rate(x)}% 완료</small><span class="sidebar-project-due ${d.kind}">${esc(d.label)}${x.deadline?' · '+esc(x.deadline.slice(5).replace('-','.')):''}</span></span></button>`}).join('')}
 function renderHead(){const p=current(),s=(view==='dashboard'||view==='admin')?aggregate():stats(p);$('#pageEyebrow').textContent=view==='admin'?'PERSONAL ADMIN':view==='dashboard'?'PORTFOLIO OVERVIEW':view==='map'?'CONNECTED TASK MAP':view==='detail'?'WORKSTREAM PROGRESS':'A4 CHECKLIST';$('#pageTitle').textContent=titleFor();$('#pageSub').textContent=view==='admin'?'계정과 클라우드 저장 상태를 관리합니다.':view==='dashboard'?'전체 사업의 계약정보, 마감상태와 과업 진행률을 확인합니다.':view==='map'?'사업 → 지원항목 → 세부과업 → 실행단계가 선으로 연결됩니다.':view==='detail'?'세부과업을 선택하여 실행단계를 순서대로 관리합니다.':'현재 선택한 사업의 세부과업을 A4 가로 형식으로 출력합니다.';if(view==='map'&&p){const d=projectDeadlineState(p);$('#pageSub').textContent=['계약 '+(p.contractDate||'미입력'),'마감 '+(p.deadline||'미입력'),'PM '+(p.projectManager||'미입력'),d.label].join('  ·  ')}$('#doneNum').textContent=s.done;$('#totalNum').textContent=s.total;$('#progressNum').textContent=s.total?Math.round(100*s.done/s.total)+'%':'0%';for(const name of ['Dashboard','Map','Detail','Paper'])$('#tab'+name).classList.toggle('active',view===({Dashboard:'dashboard',Map:'map',Detail:'detail',Paper:'print'}[name]));$('.toolbar .tabs').classList.toggle('hidden',view==='admin');$('#zoomTools').classList.toggle('hidden',view!=='map');$('#zoomValue').textContent=zoom+'%';$('#editInspector').classList.toggle('hidden',view==='dashboard'||view==='admin');const inspectorVisible=window.innerWidth<=970?$('#app').classList.contains('show-inspector'):!$('#app').classList.contains('inspector-closed');$('#editInspector').textContent=inspectorVisible?'✕ 패널 닫기':'✎ 항목 편집';$('#editInspector').setAttribute('aria-expanded',String(inspectorVisible));$('#duplicateCurrent').classList.toggle('hidden',view==='dashboard'||view==='admin');$('#mapPrintButton').classList.toggle('hidden',view!=='map');$('#printButton').classList.toggle('hidden',view==='dashboard'||view==='admin')}
+function portfolioStatusData(){
+ const s=aggregate(),total=s.total,done=s.done,doing=s.doing,blocked=s.blocked;
+ const todo=Math.max(0,total-done-doing-blocked),incomplete=total-done;
+ const percent=n=>total?Math.round(n/total*100):0;
+ return {total,done,doing,blocked,todo,incomplete,donePct:percent(done),incompletePct:percent(incomplete),
+  segments:[
+   {kind:'done',label:'완료',count:done,pct:percent(done)},
+   {kind:'doing',label:'진행 중',count:doing,pct:percent(doing)},
+   {kind:'blocked',label:'보류',count:blocked,pct:percent(blocked)},
+   {kind:'todo',label:'대기',count:todo,pct:percent(todo)}
+  ]};
+}
+function renderPortfolioStatus(){
+ const data=portfolioStatusData();
+ const bar=data.total?data.segments.map(s=>`<div class="portfolio-bar-segment ${s.kind}" style="width:${s.count/data.total*100}%" title="${s.label} ${s.count}단계 · ${s.pct}%" aria-hidden="true"></div>`).join(''):'<div class="portfolio-bar-segment empty" style="width:100%"></div>';
+ return `<section class="portfolio-status" aria-label="전체 실행단계 상태">
+ <div class="portfolio-status-head"><div><h2>전체 과업 진행현황</h2><p>모든 사업의 실행단계를 합산한 진행상태입니다. 하위 단계도 각각 1건으로 계산합니다.</p></div><div class="portfolio-status-totals"><span><b class="done">${data.donePct}%</b> 완료</span><span><b class="incomplete">${data.incompletePct}%</b> 미완료</span></div></div>
+ <div class="portfolio-bar" role="img" aria-label="전체 ${data.total}단계 중 완료 ${data.done}단계, 진행 중 ${data.doing}단계, 보류 ${data.blocked}단계, 대기 ${data.todo}단계">${bar}</div>
+ <div class="portfolio-status-grid">${data.segments.map(st=>`<div class="portfolio-status-item ${st.kind}"><span class="portfolio-status-label"><i aria-hidden="true"></i>${st.label}</span><strong>${st.pct}%</strong><small>${st.count} / ${data.total}단계</small></div>`).join('')}</div>
+ <p class="portfolio-status-foot">미완료 = 진행 중 + 보류 + 대기 · 상태를 변경하면 자동으로 반영됩니다. ${data.total?'':'실행단계를 등록하면 진행현황이 표시됩니다.'}</p>
+ </section>`;
+}
 function renderDashboard(){
  const a=aggregate();
  const list=projects.filter(p=>[p.title,p.client,p.note,p.projectManager,p.businessContact,p.businessPhone].join(' ').toLowerCase().includes(query.toLowerCase()));
- return `<div class="dashboard"><div class="dashboard-kpis"><div class="kpicard"><span>등록된 사업</span><strong>${projects.length}</strong><small>독립적으로 관리하는 전체 사업</small></div><div class="kpicard"><span>세부과업</span><strong>${a.work}</strong><small>사업별 실행 과업 수</small></div><div class="kpicard"><span>전체 실행단계</span><strong>${a.total}</strong><small>하위 단계까지 합산</small></div><div class="kpicard"><span>완료한 단계</span><strong style="color:var(--green)">${a.done}</strong><small>진행 중 ${a.doing} · 보류 ${a.blocked}</small></div></div><div class="sectionline"><div><h2>사업별 진행현황</h2><p>계약 일정, 책임자, 마감상태와 과업 진행률을 확인할 수 있습니다.</p></div><input class="search" id="projectSearch" value="${esc(query)}" placeholder="사업명·기업명·담당자 검색"></div><div class="project-grid" id="projectGrid">${list.map(p=>{
+ return `<div class="dashboard"><div class="dashboard-kpis"><div class="kpicard"><span>등록된 사업</span><strong>${projects.length}</strong><small>독립적으로 관리하는 전체 사업</small></div><div class="kpicard"><span>세부과업</span><strong>${a.work}</strong><small>사업별 실행 과업 수</small></div><div class="kpicard"><span>전체 실행단계</span><strong>${a.total}</strong><small>하위 단계까지 합산</small></div><div class="kpicard"><span>완료한 단계</span><strong style="color:var(--green)">${a.done}</strong><small>진행 중 ${a.doing} · 보류 ${a.blocked}</small></div></div>${renderPortfolioStatus()}<div class="sectionline"><div><h2>사업별 진행현황</h2><p>계약 일정, 책임자, 마감상태와 과업 진행률을 확인할 수 있습니다.</p></div><input class="search" id="projectSearch" value="${esc(query)}" placeholder="사업명·기업명·담당자 검색"></div><div class="project-grid" id="projectGrid">${list.map(p=>{
  const w=allWork(p),st=stats(p),progress=rate(p),due=projectDeadlineState(p);
  return `<div class="project-card-wrap"><button class="project-card" data-project="${esc(p.id)}"><div class="project-card-head"><div><h3>${esc(p.title)}</h3><div class="client">${esc(p.client||'기업명 미입력')}</div></div><span class="tag">${progress}% 완료</span></div><div class="project-due-row"><span class="project-status ${due.kind}">${esc(due.label)}</span>${p.deadline?`<span class="project-deadline-date">마감 ${esc(p.deadline)}</span>`:''}</div>${projectMetaHtml(p)}<div class="branches">${(p.children||[]).map(c=>`<span class="branch">${esc(c.title)} · ${(c.children||[]).length}개</span>`).join('')||'<span class="branch">지원항목 추가 필요</span>'}</div><div class="progressbar"><div class="fill" style="width:${progress}%"></div></div><div class="cardbottom"><span>${w.length}개 세부과업 · ${st.done}/${st.total}단계 완료</span><strong>구조도 열기 →</strong></div></button><button class="duplicate-shortcut" type="button" data-duplicate="${esc(p.id)}">⧉ 사업 복제</button></div>`;
  }).join('')||`<div class="empty" style="grid-column:1/-1">검색된 사업이 없습니다. 새로운 사업을 등록해 주세요.</div>`}</div></div>`;
