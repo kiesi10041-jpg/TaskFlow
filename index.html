@@ -112,7 +112,7 @@
  <div class="toast hidden" id="toast"></div>
 <script>
 (()=>{'use strict';
-const KEY='taskflow-v2-projects',OLD_KEY='taskflow-v1-local',SETTINGS_KEY='taskflow-v2-cloud-config',SESSION_KEY='taskflow-v2-cloud-session';
+const KEY='taskflow-v2-projects',OLD_KEY='taskflow-v1-local',SETTINGS_KEY='taskflow-v2-cloud-config',SESSION_KEY='taskflow-v2-cloud-session',REMEMBER_KEY='taskflow-v2-remember-login',SYNC_BASE_KEY='taskflow-v2-last-synced';
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),uid=()=>('n'+Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5));
 const today=()=>new Date().toLocaleDateString('sv-SE');
 const node=(title,children=[],note='')=>({id:uid(),title,status:'todo',children,note,assignee:'',assignees:[],due:''});
@@ -130,7 +130,7 @@ function normalizeNode(n,depth=0){
 }
 function getInitial(){try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
 let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=85,query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
-let cloudReady=false;let cfg=(()=>{try{return JSON.parse(localStorage.getItem(SETTINGS_KEY))||{}}catch(e){return {}}})();let session=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION_KEY))||null}catch(e){return null}})();
+let cloudReady=false;let cfg=(()=>{try{return JSON.parse(localStorage.getItem(SETTINGS_KEY))||{}}catch(e){return {}}})();let session=(()=>{try{return JSON.parse(localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY))||null}catch(e){return null}})();
 const current=()=>projects.find(p=>p.id===currentProjectId)||null;
 function findNode(id,base=current(),parent=null,level=0){if(!base)return null;if(base.id===id)return {n:base,parent,level};for(const child of(base.children||[])){const x=findNode(id,child,base,level+1);if(x)return x}return null}
 function allWork(p){const out=[];(p?.children||[]).forEach(c=>(c.children||[]).forEach(w=>out.push({category:c,work:w})));return out}
@@ -451,19 +451,71 @@ function removeItem(id){const f=findNode(id);if(!f)return;const msg=f.level===0?
 function download(){const payload={app:'TaskFlow',version:2,exportedAt:new Date().toISOString(),projects};const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`TaskFlow_전체사업_백업_${today()}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 function importFile(file){if(!file)return;if(file.size>20e6){alert('백업 파일 크기가 너무 큽니다.');return}const rd=new FileReader();rd.onload=()=>{try{const data=JSON.parse(rd.result);const arr=Array.isArray(data)?data:data.projects;if(!Array.isArray(arr)||arr.length>1000)throw Error('프로젝트 배열 없음');const loaded=arr.map(p=>normalizeNode(p));const ids=new Set();const visit=n=>{if(ids.has(n.id))throw Error('중복 ID');ids.add(n.id);n.children.forEach(visit)};loaded.forEach(visit);if(!confirm(`백업된 사업 ${loaded.length}개로 현재 목록을 교체합니다. 계속할까요?\n※ 기존 자료가 필요하면 먼저 JSON 백업을 받으세요.`))return;projects=loaded;currentProjectId=selectedId=loaded[0]?.id||null;focusId=null;query='';view='dashboard';mutate();notify('전체 사업 데이터 복원이 완료되었습니다.')}catch(e){alert('유효하지 않은 TaskFlow JSON 백업 파일입니다. '+e.message)}};rd.readAsText(file)}
 // Optional Supabase REST integration. Authentication tokens are session-only; projects are always cached locally.
+
+function persistSession(next){
+ if(!next?.access_token||!next?.refresh_token)throw Error('인증 정보를 받지 못했습니다.');
+ const expires=Number(next.expires_at)||Math.floor(Date.now()/1000)+(Number(next.expires_in)||3600);
+ session={...next,expires_at:expires,user:next.user||session?.user};
+ const serialized=JSON.stringify(session);
+ if(localStorage.getItem(REMEMBER_KEY)!=='0'){
+  try{localStorage.setItem(SESSION_KEY,serialized);sessionStorage.removeItem(SESSION_KEY)}
+  catch(e){sessionStorage.setItem(SESSION_KEY,serialized)}
+ }else{
+  sessionStorage.setItem(SESSION_KEY,serialized);localStorage.removeItem(SESSION_KEY);
+ }
+}
+function clearSavedSession(){
+ session=null;cloudReady=false;clearTimeout(cloudTimer);
+ localStorage.removeItem(SESSION_KEY);sessionStorage.removeItem(SESSION_KEY);
+}
+function syncBaseKey(){return SYNC_BASE_KEY+'-'+(session?.user?.id||'none')}
+function markSynced(){localStorage.setItem(syncBaseKey(),JSON.stringify(projects))}
+async function restoreCloudLogin(){
+ if(!session?.refresh_token||!validCfg())return;
+ updateCloudStatus('저장된 로그인 정보를 확인하는 중입니다.');
+ try{
+  await renewSession();
+  if(!session?.user?.id)throw Error('로그인 사용자 확인이 필요합니다.');
+  const rows=await cloudRequest('/rest/v1/taskflow_store?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=data,updated_at');
+  const hasRemote=Array.isArray(rows)&&rows.length>0&&Array.isArray(rows[0]?.data?.projects);
+  const remote=hasRemote?rows[0].data.projects.map(p=>normalizeNode(p)):[];
+  const cloudSnapshot=JSON.stringify(remote),localSnapshot=JSON.stringify(projects);
+  const baseline=localStorage.getItem(syncBaseKey());
+  if(hasRemote&&cloudSnapshot===localSnapshot){
+   cloudReady=true;markSynced();updateCloudStatus('자동 로그인 완료 · 클라우드 연결됨');
+  }else if(hasRemote&&(!projects.length||(baseline&&baseline===localSnapshot))){
+   projects=remote;currentProjectId=selectedId=projects[0]?.id||null;focusId=null;view='dashboard';
+   localStorage.setItem(KEY,JSON.stringify(projects));cloudReady=true;markSynced();render();
+   updateCloudStatus('자동 로그인 완료 · 클라우드 자료를 불러왔습니다.');
+  }else if(!hasRemote&&!projects.length){
+   cloudReady=false;updateCloudStatus('자동 로그인 완료 · 아직 저장된 사업이 없습니다.');
+  }else{
+   cloudReady=false;
+   updateCloudStatus('자동 로그인 완료 · 기기와 클라우드 자료가 다릅니다. 관리자 설정에서 확인 후 동기화하세요.');
+  }
+ }catch(err){
+  cloudReady=false;const reason=String(err?.message||err);
+  if(/refresh.token|invalid.refresh|already.used|session.not.found|invalid.grant/i.test(reason)){
+   clearSavedSession();updateCloudStatus('로그인 유지 기간이 종료되어 다시 로그인이 필요합니다.');
+  }else updateCloudStatus('자동 로그인 확인 실패 · 기기 자료는 유지됩니다: '+reason);
+ }
+ if(view==='admin')render();
+ if(!$('#cloudBackdrop').classList.contains('hidden'))updateCloudUI();
+}
+
 function validCfg(){return /^https:\/\/[a-z0-9.-]+\.supabase\.co\/?$/i.test((cfg.url||'').trim())&&typeof cfg.key==='string'&&cfg.key.length>20}
 function authHeaders(extra={}){return {'apikey':cfg.key,'Content-Type':'application/json',...(session?.access_token?{'Authorization':'Bearer '+session.access_token}:{}),...extra}}
-async function cloudRequest(path,method='GET',body=null,extra={}){if(!validCfg())throw Error('유효한 Supabase 프로젝트 URL과 키를 입력하세요.');const base=cfg.url.replace(/\/$/,'');const r=await fetch(base+path,{method,headers:authHeaders(extra),...(body!==null?{body:JSON.stringify(body)}:{})});const raw=await r.text();let data;try{data=raw?JSON.parse(raw):null}catch(e){data=raw}if(!r.ok)throw Error(typeof data==='object'?(data?.msg||data?.error_description||data?.message||data?.error||`HTTP ${r.status}`):`HTTP ${r.status}`);return data}
+async function cloudRequest(path,method='GET',body=null,extra={}){if(!validCfg())throw Error('유효한 Supabase 프로젝트 URL과 키를 입력하세요.');if(!path.startsWith('/auth/v1/')&&session?.refresh_token&&(!session.expires_at||Number(session.expires_at)*1000-Date.now()<90000))await renewSession();const base=cfg.url.replace(/\/$/,'');const r=await fetch(base+path,{method,headers:authHeaders(extra),...(body!==null?{body:JSON.stringify(body)}:{})});const raw=await r.text();let data;try{data=raw?JSON.parse(raw):null}catch(e){data=raw}if(!r.ok)throw Error(typeof data==='object'?(data?.msg||data?.error_description||data?.message||data?.error||`HTTP ${r.status}`):`HTTP ${r.status}`);return data}
 function storeConfig(){cfg.url=$('#cloudUrl').value.trim();cfg.key=$('#cloudKey').value.trim();localStorage.setItem(SETTINGS_KEY,JSON.stringify(cfg))}
 function updateCloudStatus(text){$('#cloudStatus').textContent=text;$('#saveLabel').textContent=cloudReady?'기기 + 클라우드 연결':session?'기기 저장됨 · 클라우드 확인 필요':'이 기기에 자동 저장'}
 function openCloud(){$('#cloudUrl').value=cfg.url||'';$('#cloudKey').value=cfg.key||'';$('#cloudEmail').value='';$('#cloudPassword').value='';updateCloudStatus(session?'로그인됨 · 사용자 '+(session.user?.email||'')+' · 동기화 사용 가능':'기기 내 저장 중. 데이터베이스 설정 후 로그인하면 클라우드로 저장할 수 있습니다.');$('#cloudBackdrop').classList.remove('hidden')}
 function closeCloud(){$('#cloudBackdrop').classList.add('hidden')}
-async function cloudSignup(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/signup','POST',{email,password});if(r.access_token){session=r;sessionStorage.setItem(SESSION_KEY,JSON.stringify(session))}updateCloudStatus('계정을 등록했습니다. 이메일 인증이 필요할 수 있습니다. 인증 후 로그인해 주세요.')}
+async function cloudSignup(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/signup','POST',{email,password});if(r.access_token){localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');persistSession(r)}updateCloudStatus('계정을 등록했습니다. 이메일 인증이 필요할 수 있습니다. 인증 후 로그인해 주세요.')}
 async function cloudResend(){storeConfig();const email=$('#cloudEmail').value.trim();if(!email)throw Error('가입할 때 사용한 이메일을 입력해주세요.');await cloudRequest('/auth/v1/resend','POST',{type:'signup',email});updateCloudStatus('인증 메일 재발송을 요청했습니다. 새로 도착한 메일을 열어 인증한 뒤 로그인하세요. 메일이 없으면 스팸함도 확인하세요.')}
-async function cloudLogin(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/token?grant_type=password','POST',{email,password});if(!r.access_token||!r.user?.id)throw Error('로그인 응답을 확인할 수 없습니다.');session=r;sessionStorage.setItem(SESSION_KEY,JSON.stringify(r));updateCloudStatus(`로그인 완료: ${r.user.email} · 클라우드 데이터 확인 중`);await loadCloud(true)}
-async function renewSession(){if(!session?.refresh_token)throw Error('로그인이 필요합니다.');const r=await cloudRequest('/auth/v1/token?grant_type=refresh_token','POST',{refresh_token:session.refresh_token});if(r.access_token){session=r;sessionStorage.setItem(SESSION_KEY,JSON.stringify(r))}return r}
-async function loadCloud(promptBefore=true){if(!session?.user?.id)throw Error('클라우드에 로그인해주세요.');const data=await cloudRequest('/rest/v1/taskflow_store?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=data,updated_at');if(Array.isArray(data)&&data.length&&data[0].data?.projects){const arr=data[0].data.projects.map(p=>normalizeNode(p));if(promptBefore&&!confirm(`클라우드에 저장된 사업 ${arr.length}개가 있습니다. 이 데이터를 불러오면 현재 기기 데이터를 대체합니다.\n먼저 로컬 데이터를 백업하려면 [취소]를 누르고 JSON 백업을 받아주세요.`)){updateCloudStatus('로그인 완료 · 클라우드 자료를 불러오지 않았습니다. 로컬 변경 시 클라우드에 반영될 수 있으니 백업을 권장합니다.');return}projects=arr;currentProjectId=selectedId=projects[0]?.id||null;focusId=null;view='dashboard';localStorage.setItem(KEY,JSON.stringify(projects));cloudReady=true;render();updateCloudStatus(`클라우드에서 사업 ${arr.length}개를 불러왔습니다.`)}else{if(promptBefore&&!confirm('클라우드에 저장된 자료가 없습니다. 현재 기기 데이터를 클라우드에 처음 저장할까요?'))return;await pushCloud();updateCloudStatus('첫 클라우드 저장 완료.')}}
-async function pushCloud(){if(!session?.user?.id)throw Error('클라우드 로그인이 필요합니다.');if(cloudRunning)return;cloudRunning=true;try{await cloudRequest('/rest/v1/taskflow_store?on_conflict=user_id','POST',{user_id:session.user.id,data:{projects},updated_at:new Date().toISOString()},{Prefer:'resolution=merge-duplicates,return=minimal'});cloudReady=true;$('#saveLabel').textContent='기기 + 클라우드 저장됨'}finally{cloudRunning=false}}
+async function cloudLogin(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/token?grant_type=password','POST',{email,password});if(!r.access_token||!r.user?.id)throw Error('로그인 응답을 확인할 수 없습니다.');localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');persistSession(r);updateCloudStatus(`로그인 완료: ${r.user.email} · 클라우드 데이터 확인 중`);await loadCloud(true)}
+async function renewSession(){if(!session?.refresh_token)throw Error('로그인이 필요합니다.');const r=await cloudRequest('/auth/v1/token?grant_type=refresh_token','POST',{refresh_token:session.refresh_token});if(r.access_token)persistSession({...r,user:r.user||session?.user});return r}
+async function loadCloud(promptBefore=true){if(!session?.user?.id)throw Error('클라우드에 로그인해주세요.');const data=await cloudRequest('/rest/v1/taskflow_store?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=data,updated_at');if(Array.isArray(data)&&data.length&&data[0].data?.projects){const arr=data[0].data.projects.map(p=>normalizeNode(p));if(promptBefore&&!confirm(`클라우드에 저장된 사업 ${arr.length}개가 있습니다. 이 데이터를 불러오면 현재 기기 데이터를 대체합니다.\n먼저 로컬 데이터를 백업하려면 [취소]를 누르고 JSON 백업을 받아주세요.`)){updateCloudStatus('로그인 완료 · 클라우드 자료를 불러오지 않았습니다. 로컬 변경 시 클라우드에 반영될 수 있으니 백업을 권장합니다.');return}projects=arr;currentProjectId=selectedId=projects[0]?.id||null;focusId=null;view='dashboard';localStorage.setItem(KEY,JSON.stringify(projects));cloudReady=true;markSynced();render();updateCloudStatus(`클라우드에서 사업 ${arr.length}개를 불러왔습니다.`)}else{if(promptBefore&&!confirm('클라우드에 저장된 자료가 없습니다. 현재 기기 데이터를 클라우드에 처음 저장할까요?'))return;await pushCloud();updateCloudStatus('첫 클라우드 저장 완료.')}}
+async function pushCloud(){if(!session?.user?.id)throw Error('클라우드 로그인이 필요합니다.');if(cloudRunning)return;cloudRunning=true;try{await cloudRequest('/rest/v1/taskflow_store?on_conflict=user_id','POST',{user_id:session.user.id,data:{projects},updated_at:new Date().toISOString()},{Prefer:'resolution=merge-duplicates,return=minimal'});cloudReady=true;markSynced();$('#saveLabel').textContent='기기 + 클라우드 저장됨'}finally{cloudRunning=false}}
 function scheduleCloudSync(){if(!session?.user?.id||!cloudReady)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>pushCloud().catch(e=>{console.warn('TaskFlow cloud sync:',e);$('#saveLabel').textContent='로컬 저장됨 · 클라우드 오류';$('#savedDot').style.background='#f4a93e'}),1600)}
 async function cloudAction(fn){try{updateCloudStatus('클라우드 요청 처리 중…');await fn();if(view==='admin')render()}catch(e){updateCloudStatus('클라우드 오류: '+e.message);notify('클라우드 설정 또는 로그인 상태를 확인하세요.')}}
 function handleGlobalClick(e){const target=e.target;
@@ -505,10 +557,10 @@ $('#mapPrintBackdrop').addEventListener('click',e=>{if(e.target.id==='mapPrintBa
 $('#duplicateForm').addEventListener('submit',e=>{e.preventDefault();makeDuplicate()});$('#duplicateCancel').addEventListener('click',closeDuplicate);$('#duplicateBackdrop').addEventListener('click',e=>{if(e.target.id==='duplicateBackdrop')closeDuplicate()});$('#entryForm').addEventListener('submit',e=>{e.preventDefault();makeEntry()});$('#entryCancel').addEventListener('click',closeEntry);$('#entryBackdrop').addEventListener('click',e=>{if(e.target.id==='entryBackdrop')closeEntry()});
 $('#importFile').addEventListener('change',e=>{importFile(e.target.files?.[0]);e.target.value='' });
 $('#cloudClose').addEventListener('click',closeCloud);$('#cloudBackdrop').addEventListener('click',e=>{if(e.target.id==='cloudBackdrop')closeCloud()});
-$('#cloudSignup').addEventListener('click',()=>cloudAction(cloudSignup));$('#cloudResend').addEventListener('click',()=>cloudAction(cloudResend));$('#cloudLogin').addEventListener('click',()=>cloudAction(cloudLogin));$('#cloudSync').addEventListener('click',()=>cloudAction(async()=>{storeConfig();await renewSession();if(!confirm('현재 기기의 데이터로 클라우드에 저장된 자료를 덮어씁니다. 계속할까요?')){updateCloudStatus('동기화 취소됨');return}await pushCloud();updateCloudStatus('현재 기기의 전체 사업을 클라우드에 저장했습니다.')}));$('#cloudLogout').addEventListener('click',()=>{clearTimeout(cloudTimer);session=null;cloudReady=false;sessionStorage.removeItem(SESSION_KEY);updateCloudStatus('로그아웃됨 · 로컬 데이터는 유지됩니다.');if(view==='admin')render();notify('클라우드에서 로그아웃했습니다.')});
+$('#cloudSignup').addEventListener('click',()=>cloudAction(cloudSignup));$('#cloudResend').addEventListener('click',()=>cloudAction(cloudResend));$('#cloudLogin').addEventListener('click',()=>cloudAction(cloudLogin));$('#cloudSync').addEventListener('click',()=>cloudAction(async()=>{storeConfig();await renewSession();if(!confirm('현재 기기의 데이터로 클라우드에 저장된 자료를 덮어씁니다. 계속할까요?')){updateCloudStatus('동기화 취소됨');return}await pushCloud();updateCloudStatus('현재 기기의 전체 사업을 클라우드에 저장했습니다.')}));$('#cloudLogout').addEventListener('click',()=>{clearSavedSession();updateCloudStatus('로그아웃됨 · 로컬 데이터는 유지됩니다.');if(view==='admin')render();notify('클라우드에서 로그아웃했습니다.')});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeEntry();closeCloud();closeDuplicate();closeMapPrintDialog();$('#app').classList.remove('show-side','show-inspector')}if(e.ctrlKey&&e.key==='Enter'&&e.target.closest('#inspector')){e.preventDefault();saveEdit()}});
 window.addEventListener('storage',e=>{if(e.key===KEY&&e.newValue){try{projects=JSON.parse(e.newValue).map(p=>normalizeNode(p));render()}catch(err){}}});
-if(!localStorage.getItem(KEY))save();else if(session)$('#saveLabel').textContent='클라우드 로그인됨 · 재동기화 필요';render();
+if(!localStorage.getItem(KEY))save();else if(session)$('#saveLabel').textContent='저장된 로그인 정보 확인 중';render();if(session?.refresh_token)restoreCloudLogin();
 })();
 </script>
 </body>
