@@ -1098,8 +1098,8 @@ async function renewSession(){if(!session?.refresh_token)throw Error('로그인�
 async function loadCloud(promptBefore=true){if(!session?.user?.id)throw Error('클라우드에 로그인해주세요.');const data=await cloudRequest('/rest/v1/taskflow_store?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=data,updated_at');if(Array.isArray(data)&&data.length&&data[0].data?.projects){const arr=data[0].data.projects.map(p=>normalizeNode(p));if(promptBefore&&!confirm(`클라우드에 저장된 사업 ${arr.length}개가 있습니다. 이 데이터를 불러오면 현재 기기 데이터를 대체합니다.\n먼저 로컬 데이터를 백업하려면 [취소]를 누르고 JSON 백업을 받아주세요.`)){updateCloudStatus('로그인 완료 · 클라우드 자료를 불러오지 않았습니다. 로컬 변경 시 클라우드에 반영될 수 있으니 백업을 권장합니다.');return}projects=arr;currentProjectId=selectedId=projects[0]?.id||null;focusId=null;view='dashboard';localStorage.setItem(KEY,JSON.stringify(projects));cloudReady=true;markSynced();render();updateCloudStatus(`클라우드에서 사업 ${arr.length}개를 불러왔습니다.`)}else{if(promptBefore&&!confirm('클라우드에 저장된 자료가 없습니다. 현재 기기 데이터를 클라우드에 처음 저장할까요?'))return;await pushCloud();updateCloudStatus('첫 클라우드 저장 완료.')}}
 async function pushCloud(){if(!session?.user?.id)throw Error('클라우드 로그인이 필요합니다.');if(cloudRunning)return;cloudRunning=true;try{await cloudRequest('/rest/v1/taskflow_store?on_conflict=user_id','POST',{user_id:session.user.id,data:{projects},updated_at:new Date().toISOString()},{Prefer:'resolution=merge-duplicates,return=minimal'});cloudReady=true;markSynced();$('#saveLabel').textContent='기기 + 클라우드 저장됨'}finally{cloudRunning=false}}
 function scheduleCloudSync(){if(team.active||!session?.user?.id||!cloudReady)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>pushCloud().catch(e=>{console.warn('TaskFlow cloud sync:',e);$('#saveLabel').textContent='로컬 저장됨 · 클라우드 오류';$('#savedDot').style.background='#f4a93e'}),1600)}
-async function cloudAction(fn){
- try{updateCloudStatus('클라우드 요청 처리 중…');await fn();if(view==='admin')render()}
+async function cloudAction(fn,rerender=true){
+ try{updateCloudStatus('클라우드 요청 처리 중…');await fn();if(view==='admin'&&rerender)render()}
  catch(e){
   console.warn('TaskFlow cloud action failed:',e);
   const message=teamFriendlyError(e);
@@ -1134,7 +1134,7 @@ function handleGlobalClick(e){const target=e.target;
  if(target.closest('#backupBtn')){download();return}
  if(target.closest('#restoreBtn')){$('#importFile').click();return}
  if(target.closest('#cloudBtn')){openCloud();return}
- if(target.closest('#teamCheckSetup')){cloudAction(teamCheckSetup);return}
+ if(target.closest('#teamCheckSetup')){cloudAction(teamCheckSetup,false);return}
  if(target.closest('#teamCreate')){cloudAction(teamCreateWorkspace);return}
  if(target.closest('#teamJoin')){cloudAction(teamJoinWorkspace);return}
  if(target.closest('#teamIssueInvite')){cloudAction(teamCreateInvite);return}
