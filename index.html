@@ -290,7 +290,7 @@ function stateOf(n,level){const children=n.children||[];if(level>=3){const own=n
 function needsFinalConfirmation(n,level){return level>=3&&(n.children||[]).length>0&&(n.status||'todo')!=='done'&&n.children.every(c=>stateOf(c,level+1)==='done')}
 const stateText={todo:'대기',doing:'진행 중',blocked:'보류',done:'완료'};
 function countNodes(n){return 1+(n.children||[]).reduce((a,c)=>a+countNodes(c),0)}
-function save(message='자동 저장됨'){if(team.active){teamQueueSave();return}try{localStorage.setItem(KEY,JSON.stringify(projects));$('#saveLabel').textContent=message;$('#savedDot').style.background='#49d4a4';scheduleCloudSync()}catch(e){$('#saveLabel').textContent='저장 실패 · 백업 필요';$('#savedDot').style.background='#ff746d';alert('기기 저장 공간이 부족하거나 차단되어 저장하지 못했습니다. JSON 백업을 내려받으세요.')}}
+function save(message='자동 저장됨'){if(team.active){teamQueueSave();return}if(teamAwaitingConnection()){ $('#saveLabel').textContent='공동 작업공간 연결 확인 중 · 편집 잠김';return}try{localStorage.setItem(KEY,JSON.stringify(projects));$('#saveLabel').textContent=message;$('#savedDot').style.background='#49d4a4';scheduleCloudSync()}catch(e){$('#saveLabel').textContent='저장 실패 · 백업 필요';$('#savedDot').style.background='#ff746d';alert('기기 저장 공간이 부족하거나 차단되어 저장하지 못했습니다. JSON 백업을 내려받으세요.')}}
 function mutate(){save();render()}
 function notify(str){const el=$('#toast');el.textContent=str;el.classList.remove('hidden');clearTimeout(savedTimer);savedTimer=setTimeout(()=>el.classList.add('hidden'),2600)}
 function setProject(id,next='map'){if(!projects.some(p=>p.id===id))return;currentProjectId=id;selectedId=id;focusId=allWork(current())[0]?.work.id||null;view=next;query='';$('#app').classList.remove('show-side');render()}
@@ -695,6 +695,10 @@ async function restoreCloudLogin(){
 }
 
 
+function teamAwaitingConnection(){
+ if(team.active||!session?.user?.id)return false;
+ try{const m=JSON.parse(localStorage.getItem('taskflow-v3-last-team')||'null');return m?.userId===session.user.id}catch(e){return false}
+}
 const teamIsManager=()=>team.active&&['admin','lead'].includes(team.role);
 function teamCategoryId(nodeId){
  const found=findNode(nodeId);if(!found)return null;
@@ -705,16 +709,18 @@ function teamCategoryId(nodeId){
 }
 function teamAssigned(catId){return team.categoryMembers.some(a=>a.category_id===catId&&a.user_id===session?.user?.id)}
 function teamCanEdit(n,level){
+ if(teamAwaitingConnection())return false;
  if(!team.active)return true;
  if(teamIsManager())return true;
  return level>=2&&teamAssigned(teamCategoryId(n.id));
 }
 function teamCanAdd(n,level){
+ if(teamAwaitingConnection())return false;
  if(!team.active)return true;
  if(teamIsManager())return true;
  return level>=1&&teamAssigned(level===1?n.id:teamCategoryId(n.id));
 }
-function teamCanCreateProject(){return !team.active||teamIsManager()}
+function teamCanCreateProject(){return !teamAwaitingConnection()&&(!team.active||teamIsManager())}
 function teamCacheKey(){return 'taskflow-v3-workspace-'+(session?.user?.id||'guest')+'-'+(team.workspace?.id||'none')}
 function teamFlatten(nodes){
  const out=new Map();
@@ -772,6 +778,7 @@ async function teamLoadMembers(){
 }
 async function teamRefresh(force=false){
  if(!team.active||team.busy||team.dirty&&!force)return;
+ if(!force&&document.activeElement?.closest?.('#inspectorBody,#entryForm,#duplicateForm,#cloudBackdrop'))return;
  await teamLoadMembers();
  const rows=await teamFetchRows();
  if(team.dirty&&!force)return;
@@ -871,7 +878,7 @@ async function teamFlush(){
    localStorage.setItem(teamCacheKey(),JSON.stringify(projects));
    cloudReady=true;
    $('#saveLabel').textContent='회사 공동 작업공간 저장됨';
-   render();
+   if(!document.activeElement?.closest?.('#inspectorBody,#entryForm,#duplicateForm'))render();
   }else{
    team.dirty=true;
    team.timer=setTimeout(()=>teamFlush().catch(e=>notify(e.message)),700);
