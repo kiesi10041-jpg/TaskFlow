@@ -696,13 +696,22 @@ async function restoreCloudLogin(){
 
 
 const TEAM_INVITE_PENDING_KEY='taskflow-v3-pending-invite';
+function teamPublicKeySafe(key){
+ if(typeof key!=='string')return false;
+ if(key.startsWith('sb_publishable_'))return true;
+ if(key.startsWith('eyJ')){
+  try{return JSON.parse(atob(key.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).role==='anon'}
+  catch(e){return false}
+ }
+ return false;
+}
 function teamInviteFromLink(){
  try{
   const args=new URLSearchParams(location.hash.replace(/^#/,''));
   const code=args.get('tfjoin'),url=args.get('u'),key=args.get('k');
   if(!code||!/^[0-9a-f-]{36}$/i.test(code))return false;
   if(url&&key&&/^https:\/\/[a-z0-9.-]+\.supabase\.co\/?$/i.test(url)
-     &&(key.startsWith('sb_publishable_')||key.startsWith('eyJ'))){
+     &&teamPublicKeySafe(key)){
    cfg.url=url;cfg.key=key;localStorage.setItem(SETTINGS_KEY,JSON.stringify(cfg));
   }
   localStorage.setItem(TEAM_INVITE_PENDING_KEY,code);
@@ -711,6 +720,7 @@ function teamInviteFromLink(){
  }catch(e){return false}
 }
 function teamInviteUrl(token){
+ if(!validCfg()||!teamPublicKeySafe(cfg.key))throw Error('초대 링크에는 Supabase publishable/anon 키만 사용할 수 있습니다. Secret/service_role 키를 입력하지 마세요.');
  return location.origin+location.pathname+'#'+new URLSearchParams({tfjoin:token,u:cfg.url,k:cfg.key}).toString();
 }
 async function teamJoinPendingInvite(){
@@ -1009,7 +1019,7 @@ function updateCloudUI(){
 function updateCloudStatus(text){$('#cloudStatus').textContent=text;$('#saveLabel').textContent=cloudReady?'기기 + 클라우드 연결':session?'기기 저장됨 · 클라우드 확인 필요':'이 기기에 자동 저장';updateCloudUI()}
 function openCloud(){$('#cloudUrl').value=cfg.url||'';$('#cloudKey').value=cfg.key||'';$('#cloudRemember').checked=localStorage.getItem(REMEMBER_KEY)!=='0';$('#cloudEmail').value='';$('#cloudPassword').value='';$('#cloudAdvanced').open=!validCfg();updateCloudStatus(session?'로그인된 계정입니다. 프로젝트는 변경 시 자동으로 동기화됩니다.':'이메일과 비밀번호로 로그인해 주세요.');$('#cloudBackdrop').classList.remove('hidden')}
 function closeCloud(){$('#cloudBackdrop').classList.add('hidden')}
-async function cloudSignup(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/signup','POST',{email,password});if(r.access_token){localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');persistSession(r)}updateCloudStatus('계정을 등록했습니다. 이메일 인증이 필요할 수 있습니다. 인증 후 로그인해 주세요.')}
+async function cloudSignup(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/signup','POST',{email,password});if(r.access_token){localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');persistSession(r);if(localStorage.getItem(TEAM_INVITE_PENDING_KEY)){await teamJoinPendingInvite();updateCloudStatus('계정 생성 및 팀 작업공간 참여가 완료되었습니다.');return}}updateCloudStatus('계정을 등록했습니다. 이메일 인증이 필요할 수 있습니다. 인증 후 로그인해 주세요.')}
 async function cloudResend(){storeConfig();const email=$('#cloudEmail').value.trim();if(!email)throw Error('가입할 때 사용한 이메일을 입력해주세요.');await cloudRequest('/auth/v1/resend','POST',{type:'signup',email});updateCloudStatus('인증 메일 재발송을 요청했습니다. 새로 도착한 메일을 열어 인증한 뒤 로그인하세요. 메일이 없으면 스팸함도 확인하세요.')}
 async function cloudLogin(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/token?grant_type=password','POST',{email,password});if(!r.access_token||!r.user?.id)throw Error('로그인 응답을 확인할 수 없습니다.');localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');persistSession(r);updateCloudStatus(`로그인 완료: ${r.user.email} · 클라우드 데이터 확인 중`);if(await teamActivate()){localStorage.removeItem(TEAM_INVITE_PENDING_KEY);updateCloudStatus('회사 공동 작업공간 로그인 완료 · 자동 동기화 활성');return}if(localStorage.getItem(TEAM_INVITE_PENDING_KEY)){if(await teamJoinPendingInvite()){updateCloudStatus('초대받은 회사 작업공간에 가입하고 로그인했습니다.');return}}await loadCloud(true)}
 async function renewSession(){if(!session?.refresh_token)throw Error('로그인이 필요합니다.');const r=await cloudRequest('/auth/v1/token?grant_type=refresh_token','POST',{refresh_token:session.refresh_token});if(r.access_token)persistSession({...r,user:r.user||session?.user});return r}
