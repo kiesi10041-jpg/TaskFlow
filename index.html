@@ -992,8 +992,10 @@ function teamFriendlyError(err){
  const msg=String(err?.message||err||'원인을 확인할 수 없는 오류');
  const code=String(err?.code||'');
  const stat=Number(err?.status||0);
+ if(/42703|column .*department|column .*job_title/i.test(code+' '+msg))
+  return '직원 정보 열이 없습니다. 기존 Supabase 프로젝트에 3.1 확장 SQL을 적용한 뒤 새로고침해 주세요. (원인: '+msg+')';
  if(/PGRST20[0456]|42P01|relation .*does not exist|could not find the table|schema cache|does not exist|not found/i.test(code+' '+msg))
-  return '공동 작업용 데이터베이스가 아직 설치되지 않았거나 인식되지 않습니다. 기존 Supabase 프로젝트에서 공동 작업 SQL 전체를 실행한 뒤 다시 시도해 주세요. (원인: '+msg+')';
+  return '공동 작업용 데이터베이스가 설치되지 않았거나 인식되지 않습니다. 기본 SQL(3.0)과 관리자·직원정보 확장 SQL(3.1)을 순서대로 실행한 뒤 다시 시도해 주세요. (원인: '+msg+')';
  if(/42501|permission denied|row.level.security|violates row-level|RLS|not authorized/i.test(code+' '+msg)||stat===403)
   return 'Supabase 접근 권한이 거부되었습니다. SQL 실행 여부와 현재 로그인 계정을 확인해 주세요. (원인: '+msg+')';
  if(stat===401||/invalid jwt|jwt expired|token expired|session expired/i.test(code+' '+msg))
@@ -1179,8 +1181,8 @@ function renderTeamAdmin(){
  }
  const me=team.members.find(m=>m.user_id===session.user.id)||{};
  const roleLabel={admin:'최고관리자',lead:'팀장 / PM',member:'참여 팀원'};
- const transferFrom=team.handovers.find(h=>h.status==='pending'&&h.from_user===session.user.id);
- const transferTo=team.handovers.find(h=>h.status==='pending'&&h.to_user===session.user.id);
+ const transferFrom=team.handovers.find(h=>h.status==='pending'&&new Date(h.expires_at)>new Date()&&h.from_user===session.user.id);
+ const transferTo=team.handovers.find(h=>h.status==='pending'&&new Date(h.expires_at)>new Date()&&h.to_user===session.user.id);
  const others=team.members.filter(x=>x.user_id!==session.user.id);
  const profile=`<div class="team-profile-edit"><h3>내 직원정보</h3><p>팀과 직급은 본인이 수정할 수 있습니다. 새로 만든 과업의 생성자 기록에는 현재 등록된 정보가 표시됩니다.</p><div class="team-profile-grid">
   <label class="field"><span>이름</span><input id="teamProfileName" maxlength="80" value="${esc(me.display_name||'')}" placeholder="직원 이름"></label>
