@@ -323,7 +323,7 @@ function getInitial(){try{
 }catch(e){}
  try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
 let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=85,query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
-let team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],handovers:[],handoverReady:false,audit:new Map(),base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
+let team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],invites:[],handovers:[],handoverReady:false,audit:new Map(),base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
 let cloudReady=false;let cfg=(()=>{try{return JSON.parse(localStorage.getItem(SETTINGS_KEY))||{}}catch(e){return {}}})();let session=(()=>{try{return JSON.parse(localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY))||null}catch(e){return null}})();
 const current=()=>projects.find(p=>p.id===currentProjectId)||null;
 function findNode(id,base=current(),parent=null,level=0){if(!base)return null;if(base.id===id)return {n:base,parent,level};for(const child of(base.children||[])){const x=findNode(id,child,base,level+1);if(x)return x}return null}
@@ -865,6 +865,9 @@ async function teamLoadMembers(){
  team.members=mem.map(x=>({...x,...(profileMap.get(x.user_id)||{})}));
  const own=team.members.find(x=>x.user_id===session?.user?.id);if(own)team.role=own.role;
  team.categoryMembers=cats;team.projectMembers=projs;
+ if(['admin','lead'].includes(team.role)){
+  team.invites=await teamAllRows('/rest/v1/taskflow_invites?workspace_id=eq.'+wid+'&select=token,role,uses,max_uses,expires_at,created_by,created_at&order=created_at.desc&limit=20');
+ }else team.invites=[];
  try{
   team.handovers=await teamAllRows('/rest/v1/taskflow_admin_transfers?workspace_id=eq.'+wid+'&select=id,from_user,to_user,status,created_at,expires_at&order=created_at.desc&limit=25');
   team.handoverReady=true;
@@ -894,7 +897,7 @@ async function teamRefresh(force=false){
 function teamStop(){
  if(team.timer)clearTimeout(team.timer);
  if(team.poll)clearInterval(team.poll);
- team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],handovers:[],handoverReady:false,audit:new Map(),base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
+ team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],invites:[],handovers:[],handoverReady:false,audit:new Map(),base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
 }
 async function teamActivate(){
  if(!session?.user?.id||!validCfg())return false;
@@ -1082,9 +1085,11 @@ async function teamCreateInvite(){
  {workspace_id:team.workspace.id,role,created_by:session.user.id,max_uses:1},
  {'Prefer':'return=representation'});
  if(!Array.isArray(res)||!res[0]?.token)throw Error('초대코드 생성 실패');
- $('#teamIssuedCode').value=res[0].token;
- $('#teamIssuedLink').value=teamInviteUrl(res[0].token);
- notify('초대 링크가 생성됐습니다. 팀원에게 보내 주세요.');
+ const code=res[0].token;
+ team.invites=[{token:code,role,uses:0,max_uses:1,created_by:session.user.id,expires_at:new Date(Date.now()+14*86400000).toISOString()},...(team.invites||[])];
+ $('#teamIssuedCode').value=code;
+ $('#teamIssuedLink').value=teamInviteUrl(code);
+ notify('초대 링크가 생성됐습니다. 아래 초대 링크 복사 버튼으로 팀원에게 전달해 주세요.');
 }
 async function teamAssignCategory(categoryId,userId){
  if(!teamIsManager())throw Error('팀장 또는 관리자만 배정할 수 있습니다.');
@@ -1162,7 +1167,7 @@ function renderTeamAdmin(){
  if(!team.active){
   const founder=teamCanBootstrap(),pending=localStorage.getItem(TEAM_INVITE_PENDING_KEY)||'';
   const identity=`<div class="team-current-user"><span>현재 로그인 계정</span><strong>${esc(session.user.email||'이메일 미확인')}</strong><small>${founder?'회사 최초 개설 계정으로 지정되어 있습니다.':'직원은 관리자 또는 팀장의 초대를 받아 회사 공간에 참여합니다.'}</small></div>`;
-  const profile=`<div class="team-onboard-profile"><h3>직원 정보 등록</h3><p>각 과업에서 누가 작성하고 수정했는지 구분하기 위해 이름·소속팀·직급을 기록합니다.</p><div class="team-profile-grid">
+  const profile=`<div class="team-onboard-profile"><h3>${founder?'최고관리자 계정의 표시 정보':'참여할 직원의 프로필 정보'}</h3><p>이름·소속팀·직급은 <b>현재 로그인한 계정의 프로필</b>로 등록됩니다. 다른 직원 계정을 만드는 입력란이 아닙니다.</p><div class="team-profile-grid">
    <label class="field"><span>직원 이름</span><input id="teamMyName" maxlength="80" placeholder="예: 홍길동" autocomplete="name"></label>
    <label class="field"><span>소속팀</span><input id="teamMyDepartment" maxlength="80" placeholder="예: 마케팅팀"></label>
    <label class="field"><span>직급 / 직책</span><input id="teamMyTitle" maxlength="80" placeholder="예: 팀장, 대리, 주임"></label>
@@ -1207,12 +1212,13 @@ function renderTeamAdmin(){
   <label class="field"><span>소속팀</span><input id="teamProfileDepartment" maxlength="80" value="${esc(me.department||'')}" placeholder="예: 마케팅팀"></label>
   <label class="field"><span>직급 / 직책</span><input id="teamProfileTitle" maxlength="80" value="${esc(me.job_title||'')}" placeholder="예: 팀장"></label></div>
   <button class="btn" id="teamSaveProfile" type="button">내 직원정보 저장</button></div>`;
+ const lastInvite=(team.invites||[]).find(x=>x.created_by===session.user.id&&x.uses<x.max_uses&&new Date(x.expires_at)>new Date());
  const invite=teamIsManager()?`<hr><h3>직원 초대</h3><p>직원은 각자 이메일로 로그인하며 초대 후 수행과업 담당자를 지정할 수 있습니다.</p>
    <div class="field"><span>초대 권한</span><select id="teamInviteRole"><option value="member">참여 팀원</option>${team.role==='admin'?'<option value="lead">팀장 / PM</option>':''}</select></div>
    <button class="btn" id="teamIssueInvite" type="button">초대코드 발급</button>
-   <div class="field"><span>초대코드</span><input id="teamIssuedCode" readonly placeholder="발급 후 표시"></div>
+   <div class="field"><span>발급한 초대코드 (유효기간 14일 · 1회 사용)</span><input id="teamIssuedCode" value="${esc(lastInvite?.token||'')}" readonly placeholder="발급 후 표시"></div>
    <button class="btn verylight" id="teamCopyCode" type="button">코드 복사</button>
-   <div class="field"><span>간편 초대 링크</span><input id="teamIssuedLink" readonly placeholder="발급 후 표시"></div>
+   <div class="field"><span>간편 초대 링크 · 팀원에게 직접 전달</span><input id="teamIssuedLink" value="${esc(lastInvite?teamInviteUrl(lastInvite.token):'')}" readonly placeholder="발급 후 표시"></div>
    <button class="btn" id="teamCopyLink" type="button">초대 링크 복사</button>`:'';
  let transfer='';
  if(transferFrom&&team.role==='admin'){
