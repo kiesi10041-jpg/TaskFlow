@@ -151,3 +151,21 @@ JSON 백업이나 스크린샷을 원격 삭제할 수는 없습니다.
   **실제 Supabase에 적용해야만** 동작합니다.
 - GitHub 코드의 문법·화면 출력 테스트와 SQL 정적 점검은
   데이터베이스에 SQL을 실제 실행한 통합 테스트와는 다릅니다.
+
+
+### Supabase 3.2: 최고관리자 최초 개설 RLS 오류 수정
+
+기본 공동 작업 SQL(3.0)과 직원·인계 확장 SQL(3.1)을 이미 적용했는데
+`new row violates row-level security policy for table "taskflow_workspaces"`
+오류가 난다면 [**3.2 수정 SQL**](./supabase_team_v3_2.sql)만 추가 실행합니다.
+
+- 기존 3.1에는 `auth.users.email_confirmed_at is not null` 조건이 있었으나,
+  이메일 확인을 요구하지 않는 Supabase Auth 설정에서도 로그인 가능한
+  사용자가 있어 이 조건이 최초 개설을 막을 수 있었습니다.
+- 수정 후에도 실제 인증된 Supabase 사용자 ID와
+  `zotozo12@naver.com` 이메일을 모두 확인합니다.
+- 관리자 인계 권한, 작업공간 접근 RLS, 기존 프로젝트 자료는 변경하지 않습니다.
+- SQL Editor 결과의 **관리자 계정**과 **이미 생성한 회사 공간 수**를 확인한 뒤
+  TaskFlow > 관리자 설정 > **Supabase 설치 상태 확인**을 다시 실행합니다.
+- 설계와 정적 검증만으로 실제 사용자의 Supabase Auth 설정을 알 수 없으므로
+  실패하면 SQL Editor 결과와 브라우저 오류를 확인해야 합니다.
