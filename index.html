@@ -996,6 +996,8 @@ function teamFriendlyError(err){
   return '직원 정보 열이 없습니다. 기존 Supabase 프로젝트에 3.1 확장 SQL을 적용한 뒤 새로고침해 주세요. (원인: '+msg+')';
  if(/PGRST20[0456]|42P01|relation .*does not exist|could not find the table|schema cache|does not exist|not found/i.test(code+' '+msg))
   return '공동 작업용 데이터베이스가 설치되지 않았거나 인식되지 않습니다. 기본 SQL(3.0)과 관리자·직원정보 확장 SQL(3.1)을 순서대로 실행한 뒤 다시 시도해 주세요. (원인: '+msg+')';
+ if(/new row violates row.level security policy for table ["']?taskflow_workspaces|row.level security.*taskflow_workspaces/i.test(code+' '+msg))
+  return '최초 관리자 계정 생성 정책이 요청을 거부했습니다. 기존 Supabase 프로젝트에서 3.2 권한 수정 SQL을 실행한 뒤 다시 확인해 주세요. (원인: '+msg+')';
  if(/42501|permission denied|row.level.security|violates row-level|RLS|not authorized/i.test(code+' '+msg)||stat===403)
   return 'Supabase 접근 권한이 거부되었습니다. SQL 실행 여부와 현재 로그인 계정을 확인해 주세요. (원인: '+msg+')';
  if(stat===401||/invalid jwt|jwt expired|token expired|session expired/i.test(code+' '+msg))
@@ -1019,7 +1021,16 @@ async function teamCheckSetup(){
  await cloudRequest('/rest/v1/taskflow_workspaces?select=id&limit=1');
  await cloudRequest('/rest/v1/taskflow_profiles?select=user_id,department,job_title&limit=1');
  await cloudRequest('/rest/v1/taskflow_admin_transfers?select=id&limit=1');
- teamSetupNotice('연결 확인 완료 · 공동 작업 SQL과 3.1 권한 확장이 모두 설치됐습니다.','success');
+ if(teamCanBootstrap()&&!team.active){
+  const memberships=await cloudRequest('/rest/v1/taskflow_workspace_members?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=workspace_id,role&limit=1');
+  if(Array.isArray(memberships)&&memberships.length){
+   teamSetupNotice('회사 작업공간이 이미 생성되어 있습니다. 새로 만들지 말고 다시 로그인하거나 화면을 새로고침해 연결해 주세요.','success');
+   return;
+  }
+  const permitted=await cloudRequest('/rest/v1/rpc/tf_can_open_company','POST',{});
+  if(permitted!==true)throw new Error('관리자 개설 권한 검사 결과가 거부되었습니다. Supabase 3.2 권한 수정 SQL을 실행하고 다시 확인해 주세요.');
+ }
+ teamSetupNotice('연결 확인 완료 · 관리자 계정의 회사 작업공간 생성 권한까지 확인했습니다.','success');
 }
 async function teamCreateWorkspace(){
  if(!session?.user?.id)throw Error('먼저 로그인하세요.');
@@ -1028,7 +1039,6 @@ async function teamCreateWorkspace(){
  if(!name)throw Error('회사 또는 팀 이름을 입력해 주세요.');
  const personName=$('#teamMyName')?.value.trim()||'',department=$('#teamMyDepartment')?.value.trim()||'',jobTitle=$('#teamMyTitle')?.value.trim()||'';
  if(!personName||!department||!jobTitle)throw Error('직원 이름, 소속팀, 직급을 모두 입력해 주세요.');
- await teamCheckSetup();
  // A previous request may have created the workspace before a later profile/sync step failed.
  // Reuse it instead of accidentally creating a second company workspace.
  const memberships=await cloudRequest('/rest/v1/taskflow_workspace_members?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=workspace_id,role&limit=1');
@@ -1038,6 +1048,7 @@ async function teamCreateWorkspace(){
   if(team.active){notify('이미 생성된 최고관리자 작업공간을 연결했습니다.');return}
   throw Error('기존 최고관리자 작업공간을 발견했지만 연결하지 못했습니다. 같은 회사 작업공간을 다시 생성하지 말고 Supabase 연결 상태를 확인해 주세요.');
  }
+ await teamCheckSetup();
  teamSetupNotice('회사 작업공간을 생성하는 중입니다.','checking');
  const result=await cloudRequest('/rest/v1/taskflow_workspaces?select=id,name','POST',
   {name,created_by:session.user.id},{'Prefer':'return=representation'});
@@ -1169,7 +1180,9 @@ function renderTeamAdmin(){
     <p>기존에 3.0 공동 작업 SQL을 실행했다면, 아래 3.1 권한 확장 SQL을 추가로 실행해야 합니다. 이미 작성된 사업 데이터는 삭제하지 않습니다.</p>
     <a href="https://github.com/kiesi10041-jpg/TaskFlow/blob/main/supabase_team_v3.sql" target="_blank" rel="noopener noreferrer">기본 SQL (3.0)</a>
     <span>→</span>
-    <a href="https://github.com/kiesi10041-jpg/TaskFlow/blob/main/supabase_team_v3_1.sql" target="_blank" rel="noopener noreferrer">관리자·직원정보 확장 SQL (3.1)</a></div>
+    <a href="https://github.com/kiesi10041-jpg/TaskFlow/blob/main/supabase_team_v3_1.sql" target="_blank" rel="noopener noreferrer">관리자·직원정보 확장 SQL (3.1)</a>
+    <span>→</span>
+    <a href="https://github.com/kiesi10041-jpg/TaskFlow/blob/main/supabase_team_v3_2.sql" target="_blank" rel="noopener noreferrer">관리자 개설 권한 수정 SQL (3.2)</a></div>
     ${profile}
     <label class="field"><span>회사 / 공동 작업공간 이름</span><input id="teamWorkspaceName" maxlength="150" placeholder="예: 한국온라인창업컨설팅"></label>
     <div class="team-setup-controls"><button class="btn" id="teamCheckSetup" type="button">Supabase 설치 상태 확인</button><span>설치가 확인된 후 회사 작업공간을 개설할 수 있습니다.</span></div>
