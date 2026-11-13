@@ -324,6 +324,7 @@ function getInitial(){try{
  try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
 let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=85,query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
 let team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],invites:[],handovers:[],handoverReady:false,audit:new Map(),base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
+let refreshInFlight=null,authNeedsRelogin=false;
 let cloudReady=false;let cfg=(()=>{try{return JSON.parse(localStorage.getItem(SETTINGS_KEY))||{}}catch(e){return {}}})();let session=(()=>{try{return JSON.parse(localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY))||null}catch(e){return null}})();
 const current=()=>projects.find(p=>p.id===currentProjectId)||null;
 function findNode(id,base=current(),parent=null,level=0){if(!base)return null;if(base.id===id)return {n:base,parent,level};for(const child of(base.children||[])){const x=findNode(id,child,base,level+1);if(x)return x}return null}
@@ -735,8 +736,10 @@ async function restoreCloudLogin(){
   }
  }catch(err){
   cloudReady=false;const reason=String(err?.message||err);
-  if(/refresh.token|invalid.refresh|already.used|session.not.found|invalid.grant/i.test(reason)){
-   clearSavedSession();updateCloudStatus('로그인 유지 기간이 종료되어 다시 로그인이 필요합니다.');
+  if(isInvalidRefreshError(err)){
+   // Never wipe a team workspace or unsaved drafts on refresh failure.
+   authNeedsRelogin=true;
+   updateCloudStatus('로그인 갱신이 필요합니다. 기존 계정으로 다시 로그인해 주세요. 기존 과업 데이터는 삭제하지 않았습니다.');
   }else updateCloudStatus('자동 로그인 확인 실패 · 기기 자료는 유지됩니다: '+reason);
  }
  if(view==='admin')render();
@@ -1269,20 +1272,104 @@ async function cloudRequest(path,method='GET',body=null,extra={}){if(!validCfg()
 function storeConfig(){cfg.url=$('#cloudUrl').value.trim();cfg.key=$('#cloudKey').value.trim();localStorage.setItem(SETTINGS_KEY,JSON.stringify(cfg))}
 function updateCloudUI(){
  const signed=!!session?.user?.id;
- $('#cloudUserInfo').classList.toggle('hidden',!signed);
- $('#cloudLoginFields').classList.toggle('hidden',signed);
- $('#cloudLogout').classList.toggle('hidden',!signed);
+ const relogin=signed&&authNeedsRelogin;
+ $('#cloudUserInfo').classList.toggle('hidden',!signed||relogin);
+ $('#cloudLoginFields').classList.toggle('hidden',signed&&!relogin);
+ $('#cloudLogout').classList.toggle('hidden',!signed||relogin);
  $('#cloudUserEmail').textContent=signed?(session.user.email||'계정 확인 중'):'';
  $('#cloudAdvanced').classList.toggle('hidden',signed);
  if(!signed&&!validCfg())$('#cloudAdvanced').open=true;
 }
-function updateCloudStatus(text){$('#cloudStatus').textContent=text;$('#saveLabel').textContent=cloudReady?'기기 + 클라우드 연결':session?'기기 저장됨 · 클라우드 확인 필요':'이 기기에 자동 저장';updateCloudUI()}
-function openCloud(){$('#cloudUrl').value=cfg.url||'';$('#cloudKey').value=cfg.key||'';$('#cloudRemember').checked=localStorage.getItem(REMEMBER_KEY)!=='0';$('#cloudEmail').value='';$('#cloudPassword').value='';$('#cloudAdvanced').open=!validCfg();updateCloudStatus(session?'로그인된 계정입니다. 프로젝트는 변경 시 자동으로 동기화됩니다.':'이메일과 비밀번호로 로그인해 주세요.');$('#cloudBackdrop').classList.remove('hidden')}
+function updateCloudStatus(text){$('#cloudStatus').textContent=text;$('#saveLabel').textContent=authNeedsRelogin?'로그인 갱신 필요 · 작업 자료 임시 보관 중':team.active?(team.dirty?'공동 변경내용 · 기기 보관 중':'회사 공동 작업공간 연결됨'):cloudReady?'기기 + 클라우드 연결':session?'기기 저장됨 · 클라우드 확인 필요':'이 기기에 자동 저장';updateCloudUI()}
+function openCloud(){$('#cloudUrl').value=cfg.url||'';$('#cloudKey').value=cfg.key||'';$('#cloudRemember').checked=localStorage.getItem(REMEMBER_KEY)!=='0';$('#cloudEmail').value=authNeedsRelogin?(session?.user?.email||''):'';$('#cloudPassword').value='';$('#cloudAdvanced').open=!validCfg();updateCloudStatus(authNeedsRelogin?'로그인 갱신이 필요합니다. 기존 계정으로 다시 로그인하면 작성 자료를 유지한 채 연결됩니다.':session?'로그인된 계정입니다. 프로젝트는 변경 시 자동으로 동기화됩니다.':'이메일과 비밀번호로 로그인해 주세요.');$('#cloudBackdrop').classList.remove('hidden')}
 function closeCloud(){$('#cloudBackdrop').classList.add('hidden')}
 async function cloudSignup(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/signup','POST',{email,password});if(r.access_token){localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');persistSession(r);if(localStorage.getItem(TEAM_INVITE_PENDING_KEY)){await teamJoinPendingInvite();updateCloudStatus('계정 생성 완료 · 이름·소속팀·직급 입력 후 회사에 참여해 주세요.');return}}updateCloudStatus('계정을 등록했습니다. 이메일 인증이 필요할 수 있습니다. 인증 후 로그인해 주세요.')}
 async function cloudResend(){storeConfig();const email=$('#cloudEmail').value.trim();if(!email)throw Error('가입할 때 사용한 이메일을 입력해주세요.');await cloudRequest('/auth/v1/resend','POST',{type:'signup',email});updateCloudStatus('인증 메일 재발송을 요청했습니다. 새로 도착한 메일을 열어 인증한 뒤 로그인하세요. 메일이 없으면 스팸함도 확인하세요.')}
-async function cloudLogin(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/token?grant_type=password','POST',{email,password});if(!r.access_token||!r.user?.id)throw Error('로그인 응답을 확인할 수 없습니다.');localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');persistSession(r);updateCloudStatus(`로그인 완료: ${r.user.email} · 클라우드 데이터 확인 중`);if(await teamActivate()){localStorage.removeItem(TEAM_INVITE_PENDING_KEY);updateCloudStatus('회사 공동 작업공간 로그인 완료 · 자동 동기화 활성');return}if(localStorage.getItem(TEAM_INVITE_PENDING_KEY)){if(await teamJoinPendingInvite()){updateCloudStatus('로그인 완료 · 직원정보 입력 후 초대된 회사에 참여해 주세요.');return}}await loadCloud(true)}
-async function renewSession(){if(!session?.refresh_token)throw Error('로그인이 필요합니다.');const r=await cloudRequest('/auth/v1/token?grant_type=refresh_token','POST',{refresh_token:session.refresh_token});if(r.access_token)persistSession({...r,user:r.user||session?.user});return r}
+async function cloudLogin(){
+ storeConfig();
+ const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;
+ if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');
+ const oldUserId=session?.user?.id;
+ const wasInTeam=team.active;
+ const r=await cloudRequest('/auth/v1/token?grant_type=password','POST',{email,password});
+ if(!r.access_token||!r.user?.id)throw Error('로그인 응답을 확인할 수 없습니다.');
+ if(wasInTeam&&r.user.id!==oldUserId)throw Error('작성 중인 회사 과업을 보호하기 위해 다른 계정으로 바꿀 수 없습니다. 동일한 계정으로 로그인하세요.');
+ if(!wasInTeam&&authNeedsRelogin&&oldUserId&&r.user.id!==oldUserId)throw Error('작성 중인 데이터를 보호하기 위해 기존 계정으로 다시 로그인해 주세요.');
+ localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');
+ persistSession(r);
+ authNeedsRelogin=false;
+ updateCloudStatus('로그인 인증 갱신 완료 · 클라우드에 연결 중');
+ if(wasInTeam){
+  // Preserve in-progress task edits; teamActivate() would re-fetch and replace them.
+  if(team.dirty)await teamFlush();
+  else await teamLoadMembers();
+  updateCloudStatus(team.dirty?'인증 갱신 완료 · 저장되지 않은 변경내용 확인 필요':'로그인 갱신 완료 · 회사 공동 작업공간 연결됨');
+  return;
+ }
+ if(await teamActivate()){localStorage.removeItem(TEAM_INVITE_PENDING_KEY);updateCloudStatus('회사 공동 작업공간 로그인 완료 · 자동 동기화 활성');return}
+ if(localStorage.getItem(TEAM_INVITE_PENDING_KEY)){
+  if(await teamJoinPendingInvite()){updateCloudStatus('로그인 완료 · 직원정보 입력 후 초대된 회사에 참여해 주세요.');return}
+ }
+ await loadCloud(true);
+}
+function isInvalidRefreshError(err){
+ return /invalid.refresh.token|refresh.token.*(already.used|not.found|invalid)|already.used|invalid.grant|session.not.found/i.test(String(err?.message||err||''));
+}
+function getPersistedCloudSession(){
+ try{
+  const raw=localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY);
+  return raw?JSON.parse(raw):null;
+ }catch(e){return null}
+}
+function adoptSharedCloudSession(previousToken){
+ const stored=getPersistedCloudSession();
+ if(!stored?.refresh_token||!stored?.access_token||!session?.user?.id
+    ||stored.user?.id!==session.user.id||stored.refresh_token===previousToken)return false;
+ // Other tabs may rotate the token first. Adopt their newer, persisted login.
+ session=stored;
+ authNeedsRelogin=false;
+ return true;
+}
+async function renewSession(force=false){
+ if(refreshInFlight)return refreshInFlight;
+ if(!session?.refresh_token)throw Error('로그인이 필요합니다.');
+ const perform=async()=>{
+  const pendingToken=session?.refresh_token;
+  if(!pendingToken)throw Error('로그인이 필요합니다.');
+  const rotate=async()=>{
+   // Recheck AFTER acquiring the cross-tab lock; another tab may have rotated it.
+   const adopted=adoptSharedCloudSession(session.refresh_token);
+   if(adopted&&!force&&Number(session.expires_at)*1000>Date.now()+90000)return session;
+   if(!force&&Number(session.expires_at)*1000>Date.now()+90000)return session;
+   const token=session.refresh_token;
+   try{
+    const result=await cloudRequest('/auth/v1/token?grant_type=refresh_token','POST',{refresh_token:token});
+    if(!result?.access_token||!result?.refresh_token)throw Error('인증 갱신 응답이 올바르지 않습니다.');
+    persistSession({...result,user:result.user||session?.user});
+    authNeedsRelogin=false;
+    return session;
+   }catch(err){
+    // Recover once from a different browser tab that refreshed the same account.
+    if(adoptSharedCloudSession(token)){
+     if(Number(session.expires_at)*1000>Date.now()+30000)return session;
+    }
+    if(isInvalidRefreshError(err)){
+     authNeedsRelogin=true;cloudReady=false;
+     const label=$('#saveLabel');
+     if(label)label.textContent='로그인 갱신 필요 · 작성 자료는 이 기기에 보관됨';
+    }
+    throw err;
+   }
+  };
+  if(typeof navigator!=='undefined'&&navigator.locks?.request){
+   return navigator.locks.request('taskflow-auth-refresh-'+(cfg.url||'default'),{mode:'exclusive'},rotate);
+  }
+  return rotate();
+ };
+ const promise=perform();
+ refreshInFlight=promise;
+ try{return await promise}finally{if(refreshInFlight===promise)refreshInFlight=null}
+}
 async function loadCloud(promptBefore=true){if(!session?.user?.id)throw Error('클라우드에 로그인해주세요.');const data=await cloudRequest('/rest/v1/taskflow_store?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=data,updated_at');if(Array.isArray(data)&&data.length&&data[0].data?.projects){const arr=data[0].data.projects.map(p=>normalizeNode(p));if(promptBefore&&!confirm(`클라우드에 저장된 사업 ${arr.length}개가 있습니다. 이 데이터를 불러오면 현재 기기 데이터를 대체합니다.\n먼저 로컬 데이터를 백업하려면 [취소]를 누르고 JSON 백업을 받아주세요.`)){updateCloudStatus('로그인 완료 · 클라우드 자료를 불러오지 않았습니다. 로컬 변경 시 클라우드에 반영될 수 있으니 백업을 권장합니다.');return}projects=arr;currentProjectId=selectedId=projects[0]?.id||null;focusId=null;view='dashboard';localStorage.setItem(KEY,JSON.stringify(projects));cloudReady=true;markSynced();render();updateCloudStatus(`클라우드에서 사업 ${arr.length}개를 불러왔습니다.`)}else{if(promptBefore&&!confirm('클라우드에 저장된 자료가 없습니다. 현재 기기 데이터를 클라우드에 처음 저장할까요?'))return;await pushCloud();updateCloudStatus('첫 클라우드 저장 완료.')}}
 async function pushCloud(){if(!session?.user?.id)throw Error('클라우드 로그인이 필요합니다.');if(cloudRunning)return;cloudRunning=true;try{await cloudRequest('/rest/v1/taskflow_store?on_conflict=user_id','POST',{user_id:session.user.id,data:{projects},updated_at:new Date().toISOString()},{Prefer:'resolution=merge-duplicates,return=minimal'});cloudReady=true;markSynced();$('#saveLabel').textContent='기기 + 클라우드 저장됨'}finally{cloudRunning=false}}
 function scheduleCloudSync(){if(team.active||!session?.user?.id||!cloudReady)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>pushCloud().catch(e=>{console.warn('TaskFlow cloud sync:',e);$('#saveLabel').textContent='로컬 저장됨 · 클라우드 오류';$('#savedDot').style.background='#f4a93e'}),1600)}
@@ -1350,7 +1437,20 @@ $('#importFile').addEventListener('change',e=>{importFile(e.target.files?.[0]);e
 $('#cloudClose').addEventListener('click',closeCloud);$('#cloudBackdrop').addEventListener('click',e=>{if(e.target.id==='cloudBackdrop')closeCloud()});
 $('#cloudSignup').addEventListener('click',()=>cloudAction(cloudSignup));$('#cloudResend').addEventListener('click',()=>cloudAction(cloudResend));$('#cloudRemember').addEventListener('change',e=>{localStorage.setItem(REMEMBER_KEY,e.target.checked?'1':'0');if(session?.refresh_token)persistSession(session)});$('#cloudLogin').addEventListener('click',()=>cloudAction(cloudLogin));$('#cloudLogout').addEventListener('click',()=>{clearSavedSession();updateCloudStatus('로그아웃됨 · 이 기기의 개인 및 공동 자료 캐시는 유지됩니다.');render();notify('클라우드에서 로그아웃했습니다.')});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeEntry();closeCloud();closeDuplicate();closeMapPrintDialog();$('#app').classList.remove('show-side','show-inspector')}if(e.ctrlKey&&e.key==='Enter'&&e.target.closest('#inspector')){e.preventDefault();saveEdit()}});
-window.addEventListener('storage',e=>{if(e.key===KEY&&e.newValue){try{projects=JSON.parse(e.newValue).map(p=>normalizeNode(p));render()}catch(err){}}});
+window.addEventListener('storage',e=>{
+ if(e.key===SESSION_KEY&&e.newValue&&session?.user?.id){
+  try{
+   const stored=JSON.parse(e.newValue);
+   if(stored?.user?.id===session.user.id&&stored.access_token&&stored.refresh_token
+      &&stored.refresh_token!==session.refresh_token){
+    session=stored;authNeedsRelogin=false;
+   }
+  }catch(err){}
+ }
+ if(e.key===KEY&&e.newValue&&!team.active&&!teamAwaitingConnection()){
+  try{projects=JSON.parse(e.newValue).map(p=>normalizeNode(p));render()}catch(err){}
+ }
+});
 const inviteOpened=teamInviteFromLink();
 if(!localStorage.getItem(KEY))save();else if(session)$('#saveLabel').textContent='저장된 로그인 정보 확인 중';
 render();
