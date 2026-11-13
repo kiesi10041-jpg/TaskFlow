@@ -188,6 +188,13 @@
 .team-join-expander summary{cursor:pointer;font-size:12px;font-weight:850;color:#587094}
 .team-join-expander p{margin:12px 0;font-size:11px;color:#778aa4;line-height:1.6}
 @media(max-width:600px){.team-onboarding{padding:16px}.team-create-primary{width:100%}}
+
+.team-setup-controls{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:15px 0 10px}
+.team-setup-controls>span{font-size:11px;color:#73839e}
+.team-setup-feedback{border-radius:10px;padding:12px 15px;margin:12px 0;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.team-setup-feedback.error{background:#fff0f1;color:#a33345;border:1px solid #f5d1d6}
+.team-setup-feedback.success{background:#ecf8f2;color:#137b54;border:1px solid #c5ead8}
+.team-setup-feedback.checking{background:#f0f5ff;color:#4264a5;border:1px solid #d9e3f9}
 </style>
 </head>
 <body>
@@ -942,15 +949,50 @@ async function teamFlush(){
   }
  }finally{team.busy=false}
 }
+
+function teamFriendlyError(err){
+ const msg=String(err?.message||err||'원인을 확인할 수 없는 오류');
+ const code=String(err?.code||'');
+ const stat=Number(err?.status||0);
+ if(/PGRST20[0456]|42P01|relation .*does not exist|could not find the table|schema cache|does not exist|not found/i.test(code+' '+msg))
+  return '공동 작업용 데이터베이스가 아직 설치되지 않았거나 인식되지 않습니다. 기존 Supabase 프로젝트에서 공동 작업 SQL 전체를 실행한 뒤 다시 시도해 주세요. (원인: '+msg+')';
+ if(/42501|permission denied|row.level.security|violates row-level|RLS|not authorized/i.test(code+' '+msg)||stat===403)
+  return 'Supabase 접근 권한이 거부되었습니다. SQL 실행 여부와 현재 로그인 계정을 확인해 주세요. (원인: '+msg+')';
+ if(stat===401||/invalid jwt|jwt expired|token expired|session expired/i.test(code+' '+msg))
+  return '로그인 인증이 만료되었거나 유효하지 않습니다. 로그아웃 후 다시 로그인해 주세요. (원인: '+msg+')';
+ if(/PGRST202|function .*not found/i.test(code+' '+msg))
+  return '공동 작업용 함수가 아직 설치되지 않았습니다. 공동 작업 SQL을 다시 확인해 주세요. (원인: '+msg+')';
+ if(/Failed to fetch|NetworkError|network request/i.test(msg))
+  return 'Supabase 서버에 연결하지 못했습니다. 인터넷 연결 또는 Supabase 프로젝트 URL을 확인해 주세요. (원인: '+msg+')';
+ return '회사 작업공간 생성 중 오류가 발생했습니다. (원인: '+msg+')';
+}
+function teamSetupNotice(message,kind='error'){
+ const el=$('#teamSetupError');if(!el)return;
+ el.textContent=message;
+ el.classList.remove('hidden','error','success','checking');
+ el.classList.add(kind);
+}
+async function teamCheckSetup(){
+ if(!session?.user?.id)throw Error('TaskFlow 계정에 먼저 로그인해 주세요.');
+ if(!validCfg())throw Error('Supabase 프로젝트 URL 또는 Publishable key가 설정되지 않았습니다. 계정·클라우드 설정에서 확인해 주세요.');
+ teamSetupNotice('Supabase 공동 작업 테이블 설치 여부를 확인하는 중입니다.','checking');
+ await cloudRequest('/rest/v1/taskflow_workspaces?select=id&limit=1');
+ teamSetupNotice('연결 확인 완료 · 공동 작업용 테이블을 찾았습니다. 회사 작업공간을 생성할 수 있습니다.','success');
+}
 async function teamCreateWorkspace(){
  if(!session?.user?.id)throw Error('먼저 로그인하세요.');
  const name=$('#teamWorkspaceName')?.value.trim();
  if(!name)throw Error('회사 또는 팀 이름을 입력해 주세요.');
+ await teamCheckSetup();
+ teamSetupNotice('회사 작업공간을 생성하는 중입니다.','checking');
  const result=await cloudRequest('/rest/v1/taskflow_workspaces?select=id,name','POST',
   {name,created_by:session.user.id},{'Prefer':'return=representation'});
  if(!Array.isArray(result)||!result.length)throw Error('작업공간 생성 응답이 없습니다.');
- await cloudRequest('/rest/v1/rpc/tf_update_my_profile','POST',{p_name:$('#teamMyName')?.value.trim()||''});
- await teamActivate();if(!team.active||team.role!=='admin')throw Error('최고관리자 권한 확인이 필요합니다. 작업공간이 생성됐는지 새로고침 후 확인해 주세요.');notify('회사 작업공간 개설 완료 · 이 계정이 최고관리자로 등록됐습니다.');
+ try{
+  await cloudRequest('/rest/v1/rpc/tf_update_my_profile','POST',{p_name:$('#teamMyName')?.value.trim()||''});
+  await teamActivate();
+ }catch(e){throw Error('회사 작업공간은 생성되었지만 계정 연결 확인에서 실패했습니다. 중복 생성하지 말고 새로고침한 뒤 관리자 설정을 확인해 주세요. 원인: '+e.message)}
+ if(!team.active||team.role!=='admin')throw Error('회사 공간이 생성되었지만 최고관리자 권한 확인에 실패했습니다. 중복 생성하지 말고 새로고침 후 확인해 주세요.');notify('회사 작업공간 개설 완료 · 이 계정이 최고관리자로 등록됐습니다.');
 }
 async function teamJoinWorkspace(){
  if(!session?.user?.id)throw Error('먼저 로그인하세요.');
@@ -998,7 +1040,7 @@ function renderTeamAdmin(){
  <div class="team-onboard-setup"><strong>시작 전 확인</strong><p>Supabase에서 회사 공동 작업 SQL을 한 번 실행해야 합니다. 기존 사업 데이터는 지우지 않습니다.</p><a href="https://github.com/kiesi10041-jpg/TaskFlow/blob/main/supabase_team_v3.sql" target="_blank" rel="noopener noreferrer">① 설치할 Supabase SQL 열기</a> <span>→</span> <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer">② Supabase SQL Editor 열기</a></div>
  <div class="field"><span>직원에게 표시할 이름 (선택)</span><input id="teamMyName" maxlength="80" placeholder="예: 심훈"></div>
  <div class="field"><span>회사 / 공동 작업공간 이름</span><input id="teamWorkspaceName" maxlength="150" placeholder="예: 한국온라인창업컨설팅"></div>
- <button class="btn primary team-create-primary" id="teamCreate" type="button">이 계정을 최고관리자로 설정하고 회사 작업공간 만들기</button>
+ <div class="team-setup-controls"><button class="btn" id="teamCheckSetup" type="button">Supabase 설치 상태 확인</button><span>아직 SQL을 실행하지 않았다면 먼저 설치해 주세요.</span></div><div class="team-setup-feedback hidden" id="teamSetupError" role="alert" aria-live="polite"></div><button class="btn primary team-create-primary" id="teamCreate" type="button">이 계정을 최고관리자로 설정하고 회사 작업공간 만들기</button>
  <p class="team-help">개설 후 기존 사업 가져오기 → 직원 초대 → 수행과업 담당자 배정 순서로 진행합니다.</p>
  <details class="team-join-expander"><summary>이미 회사 작업공간이 있나요? 직원 초대로 참여하기</summary>
   <p>팀장 또는 관리자가 보내준 초대 링크가 있다면 링크를 사용하세요. 초대코드를 받은 경우 아래에 입력합니다.</p>
@@ -1035,7 +1077,7 @@ async function teamImportLegacy(){
 
 function validCfg(){return /^https:\/\/[a-z0-9.-]+\.supabase\.co\/?$/i.test((cfg.url||'').trim())&&typeof cfg.key==='string'&&cfg.key.length>20}
 function authHeaders(extra={}){return {'apikey':cfg.key,'Content-Type':'application/json',...(session?.access_token?{'Authorization':'Bearer '+session.access_token}:{}),...extra}}
-async function cloudRequest(path,method='GET',body=null,extra={}){if(!validCfg())throw Error('유효한 Supabase 프로젝트 URL과 키를 입력하세요.');if(!path.startsWith('/auth/v1/')&&session?.refresh_token&&(!session.expires_at||Number(session.expires_at)*1000-Date.now()<90000))await renewSession();const base=cfg.url.replace(/\/$/,'');const r=await fetch(base+path,{method,headers:authHeaders(extra),...(body!==null?{body:JSON.stringify(body)}:{})});const raw=await r.text();let data;try{data=raw?JSON.parse(raw):null}catch(e){data=raw}if(!r.ok)throw Error(typeof data==='object'?(data?.msg||data?.error_description||data?.message||data?.error||`HTTP ${r.status}`):`HTTP ${r.status}`);return data}
+async function cloudRequest(path,method='GET',body=null,extra={}){if(!validCfg())throw Error('유효한 Supabase 프로젝트 URL과 키를 입력하세요.');if(!path.startsWith('/auth/v1/')&&session?.refresh_token&&(!session.expires_at||Number(session.expires_at)*1000-Date.now()<90000))await renewSession();const base=cfg.url.replace(/\/$/,'');const r=await fetch(base+path,{method,headers:authHeaders(extra),...(body!==null?{body:JSON.stringify(body)}:{})});const raw=await r.text();let data;try{data=raw?JSON.parse(raw):null}catch(e){data=raw}if(!r.ok){const error=new Error(typeof data==='object'?(data?.msg||data?.error_description||data?.message||data?.error||`HTTP ${r.status}`):`HTTP ${r.status}`);error.code=data?.code||'';error.status=r.status;throw error}return data}
 function storeConfig(){cfg.url=$('#cloudUrl').value.trim();cfg.key=$('#cloudKey').value.trim();localStorage.setItem(SETTINGS_KEY,JSON.stringify(cfg))}
 function updateCloudUI(){
  const signed=!!session?.user?.id;
@@ -1056,7 +1098,16 @@ async function renewSession(){if(!session?.refresh_token)throw Error('로그인�
 async function loadCloud(promptBefore=true){if(!session?.user?.id)throw Error('클라우드에 로그인해주세요.');const data=await cloudRequest('/rest/v1/taskflow_store?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=data,updated_at');if(Array.isArray(data)&&data.length&&data[0].data?.projects){const arr=data[0].data.projects.map(p=>normalizeNode(p));if(promptBefore&&!confirm(`클라우드에 저장된 사업 ${arr.length}개가 있습니다. 이 데이터를 불러오면 현재 기기 데이터를 대체합니다.\n먼저 로컬 데이터를 백업하려면 [취소]를 누르고 JSON 백업을 받아주세요.`)){updateCloudStatus('로그인 완료 · 클라우드 자료를 불러오지 않았습니다. 로컬 변경 시 클라우드에 반영될 수 있으니 백업을 권장합니다.');return}projects=arr;currentProjectId=selectedId=projects[0]?.id||null;focusId=null;view='dashboard';localStorage.setItem(KEY,JSON.stringify(projects));cloudReady=true;markSynced();render();updateCloudStatus(`클라우드에서 사업 ${arr.length}개를 불러왔습니다.`)}else{if(promptBefore&&!confirm('클라우드에 저장된 자료가 없습니다. 현재 기기 데이터를 클라우드에 처음 저장할까요?'))return;await pushCloud();updateCloudStatus('첫 클라우드 저장 완료.')}}
 async function pushCloud(){if(!session?.user?.id)throw Error('클라우드 로그인이 필요합니다.');if(cloudRunning)return;cloudRunning=true;try{await cloudRequest('/rest/v1/taskflow_store?on_conflict=user_id','POST',{user_id:session.user.id,data:{projects},updated_at:new Date().toISOString()},{Prefer:'resolution=merge-duplicates,return=minimal'});cloudReady=true;markSynced();$('#saveLabel').textContent='기기 + 클라우드 저장됨'}finally{cloudRunning=false}}
 function scheduleCloudSync(){if(team.active||!session?.user?.id||!cloudReady)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>pushCloud().catch(e=>{console.warn('TaskFlow cloud sync:',e);$('#saveLabel').textContent='로컬 저장됨 · 클라우드 오류';$('#savedDot').style.background='#f4a93e'}),1600)}
-async function cloudAction(fn){try{updateCloudStatus('클라우드 요청 처리 중…');await fn();if(view==='admin')render()}catch(e){updateCloudStatus('클라우드 오류: '+e.message);notify('클라우드 설정 또는 로그인 상태를 확인하세요.')}}
+async function cloudAction(fn){
+ try{updateCloudStatus('클라우드 요청 처리 중…');await fn();if(view==='admin')render()}
+ catch(e){
+  console.warn('TaskFlow cloud action failed:',e);
+  const message=teamFriendlyError(e);
+  updateCloudStatus(message);
+  teamSetupNotice(message);
+  notify(message.length>85?message.slice(0,82)+'…':message);
+ }
+}
 function handleGlobalClick(e){const target=e.target;
  if(target.closest('[data-team-category]')){const b=target.closest('[data-team-category]');cloudAction(()=>teamAssignCategory(b.dataset.teamCategory,b.dataset.teamUser));return}
  if(target.closest('[data-duplicate]')){if(!teamCanCreateProject()){notify('사업 복제 권한이 없습니다.');return}openDuplicate(target.closest('[data-duplicate]').dataset.duplicate);return}
@@ -1083,6 +1134,7 @@ function handleGlobalClick(e){const target=e.target;
  if(target.closest('#backupBtn')){download();return}
  if(target.closest('#restoreBtn')){$('#importFile').click();return}
  if(target.closest('#cloudBtn')){openCloud();return}
+ if(target.closest('#teamCheckSetup')){cloudAction(teamCheckSetup);return}
  if(target.closest('#teamCreate')){cloudAction(teamCreateWorkspace);return}
  if(target.closest('#teamJoin')){cloudAction(teamJoinWorkspace);return}
  if(target.closest('#teamIssueInvite')){cloudAction(teamCreateInvite);return}
