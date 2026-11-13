@@ -835,6 +835,7 @@ async function teamLoadMembers(){
  ]);
  const profileMap=new Map(profiles.map(x=>[x.user_id,x]));
  team.members=mem.map(x=>({...x,...(profileMap.get(x.user_id)||{})}));
+ const own=team.members.find(x=>x.user_id===session?.user?.id);if(own)team.role=own.role;
  team.categoryMembers=cats;team.projectMembers=projs;
  try{
   team.handovers=await teamAllRows('/rest/v1/taskflow_admin_transfers?workspace_id=eq.'+wid+'&select=id,from_user,to_user,status,created_at,expires_at&order=created_at.desc&limit=25');
@@ -986,7 +987,9 @@ async function teamCheckSetup(){
  if(!validCfg())throw Error('Supabase 프로젝트 URL 또는 Publishable key가 설정되지 않았습니다. 계정·클라우드 설정에서 확인해 주세요.');
  teamSetupNotice('Supabase 공동 작업 테이블 설치 여부를 확인하는 중입니다.','checking');
  await cloudRequest('/rest/v1/taskflow_workspaces?select=id&limit=1');
- teamSetupNotice('연결 확인 완료 · 공동 작업용 테이블을 찾았습니다. 회사 작업공간을 생성할 수 있습니다.','success');
+ await cloudRequest('/rest/v1/taskflow_profiles?select=user_id,department,job_title&limit=1');
+ await cloudRequest('/rest/v1/taskflow_admin_transfers?select=id&limit=1');
+ teamSetupNotice('연결 확인 완료 · 공동 작업 SQL과 3.1 권한 확장이 모두 설치됐습니다.','success');
 }
 async function teamCreateWorkspace(){
  if(!session?.user?.id)throw Error('먼저 로그인하세요.');
@@ -1008,17 +1011,22 @@ async function teamCreateWorkspace(){
   {name,created_by:session.user.id},{'Prefer':'return=representation'});
  if(!Array.isArray(result)||!result.length)throw Error('작업공간 생성 응답이 없습니다.');
  try{
-  await cloudRequest('/rest/v1/rpc/tf_update_my_profile','POST',{p_name:$('#teamMyName')?.value.trim()||''});
+  await teamWriteProfile($('#teamMyName')?.value.trim()||'',$('#teamMyDepartment')?.value.trim()||'',$('#teamMyTitle')?.value.trim()||'');
   await teamActivate();
  }catch(e){throw Error('회사 작업공간은 생성되었지만 계정 연결 확인에서 실패했습니다. 중복 생성하지 말고 새로고침한 뒤 관리자 설정을 확인해 주세요. 원인: '+e.message)}
  if(!team.active||team.role!=='admin')throw Error('회사 공간이 생성되었지만 최고관리자 권한 확인에 실패했습니다. 중복 생성하지 말고 새로고침 후 확인해 주세요.');notify('회사 작업공간 개설 완료 · 이 계정이 최고관리자로 등록됐습니다.');
 }
 async function teamJoinWorkspace(){
  if(!session?.user?.id)throw Error('먼저 로그인하세요.');
- const code=$('#teamInviteCode')?.value.trim(),name=$('#teamMyName')?.value.trim()||'';
- if(!/^[0-9a-f-]{36}$/i.test(code))throw Error('초대코드 형식이 올바르지 않습니다.');
+ const code=$('#teamInviteCode')?.value.trim()||localStorage.getItem(TEAM_INVITE_PENDING_KEY)||'';
+ const name=$('#teamMyName')?.value.trim()||'',department=$('#teamMyDepartment')?.value.trim()||'',jobTitle=$('#teamMyTitle')?.value.trim()||'';
+ if(!name||!department||!jobTitle)throw Error('직원 이름, 소속팀, 직급을 모두 입력해 주세요.');
+ if(!/^[0-9a-f-]{36}$/i.test(code))throw Error('초대코드를 확인해 주세요.');
  await cloudRequest('/rest/v1/rpc/tf_accept_invite','POST',{p_token:code,p_name:name});
- await teamActivate();notify('공동 작업공간에 참여했습니다.');
+ // Joining is already committed if a profile update fails: reconnect rather than joining twice.
+ try{await teamWriteProfile(name,department,jobTitle);}
+ finally{localStorage.removeItem(TEAM_INVITE_PENDING_KEY);await teamActivate();}
+ notify('직원정보를 등록하고 회사 작업공간에 참여했습니다.');
 }
 async function teamCreateInvite(){
  if(!teamIsManager())throw Error('팀장 또는 관리자만 초대할 수 있습니다.');
@@ -1042,6 +1050,57 @@ async function teamAssignCategory(categoryId,userId){
   if(!otherScopes)await cloudRequest('/rest/v1/taskflow_project_members?project_id=eq.'+encodeURIComponent(currentProjectId)+'&user_id=eq.'+encodeURIComponent(userId),'DELETE');
  }else await cloudRequest(path,'POST',{project_id:currentProjectId,category_id:categoryId,user_id:userId});
  await teamLoadMembers();renderInspector();notify(active?'수행과업 배정을 해제했습니다.':'팀원에게 수행과업을 배정했습니다.');
+}
+function teamMemberName(userId){
+ const person=team.members.find(m=>m.user_id===userId);
+ if(!person)return userId?'이전 구성원':'확인 전';
+ return [person.display_name||person.email||'이름 미등록',person.department,person.job_title].filter(Boolean).join(' · ');
+}
+function teamAuditPanel(nodeId){
+ const audit=team.audit?.get(nodeId);
+ if(!audit)return '<div class="team-node-audit">처음 저장하면 생성자와 수정자가 기록됩니다.</div>';
+ const fmt=stamp=>stamp?new Date(stamp).toLocaleString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'기록 없음';
+ return `<div class="team-node-audit"><strong>변경 이력</strong>
+ <div>최초 생성: ${esc(teamMemberName(audit.created_by))} <small>${esc(fmt(audit.created_at))}</small></div>
+ <div>최근 수정: ${esc(teamMemberName(audit.updated_by))} <small>${esc(fmt(audit.updated_at))}</small></div>
+ </div>`;
+}
+async function teamSaveMyProfile(){
+ if(!session?.user?.id)throw Error('로그인이 필요합니다.');
+ const name=($('#teamProfileName')||$('#teamMyName'))?.value.trim()||'';
+ const department=($('#teamProfileDepartment')||$('#teamMyDepartment'))?.value.trim()||'';
+ const jobTitle=($('#teamProfileTitle')||$('#teamMyTitle'))?.value.trim()||'';
+ if(!name||!department||!jobTitle)throw Error('직원 이름, 소속팀, 직급을 모두 입력해 주세요.');
+ await teamWriteProfile(name,department,jobTitle);
+ if(team.active){await teamLoadMembers();render()}
+ notify('직원정보가 저장됐습니다.');
+}
+async function teamWriteProfile(name,department,jobTitle){
+ if(!name||!department||!jobTitle)throw Error('이름, 소속팀, 직급을 입력해 주세요.');
+ await cloudRequest('/rest/v1/rpc/tf_update_my_profile','POST',{p_name:name.slice(0,80)});
+ await cloudRequest('/rest/v1/taskflow_profiles?user_id=eq.'+encodeURIComponent(session.user.id),'PATCH',{
+  department:department.slice(0,80),job_title:jobTitle.slice(0,80)
+ });
+}
+async function teamRequestHandover(){
+ if(!team.active||team.role!=='admin')throw Error('현재 최고관리자만 인계를 요청할 수 있습니다.');
+ if(!team.handoverReady)throw Error('관리자 인계 기능이 설치되지 않았습니다. Supabase 3.1 확장 SQL을 먼저 적용해 주세요.');
+ const next=$('#teamSuccessor')?.value;
+ if(!next||next===session.user.id)throw Error('관리자 권한을 넘겨받을 직원 계정을 선택해 주세요.');
+ if(!confirm('선택한 직원에게 관리자 인계를 요청합니다. 상대가 수락하면 현재 계정은 일반 팀원으로 전환되고 전체 사업 관리 권한을 잃습니다. 계속할까요?'))return;
+ await cloudRequest('/rest/v1/rpc/tf_propose_admin_transfer','POST',{p_workspace:team.workspace.id,p_to_user:next});
+ await teamLoadMembers();render();notify('인계 요청을 보냈습니다. 지정된 직원만 수락할 수 있습니다.');
+}
+async function teamAcceptHandover(id){
+ if(!team.active||!team.handovers.some(x=>x.id===id&&x.to_user===session?.user?.id&&x.status==='pending'))throw Error('이 계정에 배정된 관리자 인계 요청이 아닙니다.');
+ if(!confirm('최고관리자 권한을 인수하시겠습니까? 수락하면 이전 관리자는 일반 팀원이 되며 전체 사업 열람·관리 권한을 잃습니다.'))return;
+ await cloudRequest('/rest/v1/rpc/tf_accept_admin_transfer','POST',{p_transfer:id});
+ await teamActivate();render();notify('최고관리자 권한을 인수했습니다.');
+}
+async function teamCancelHandover(id){
+ if(!team.active||team.role!=='admin'||!team.handovers.some(x=>x.id===id&&x.from_user===session.user.id&&x.status==='pending'))throw Error('취소할 인계 요청이 없습니다.');
+ await cloudRequest('/rest/v1/rpc/tf_cancel_admin_transfer','POST',{p_transfer:id});
+ await teamLoadMembers();render();notify('관리자 인계 요청을 취소했습니다.');
 }
 function teamAssignmentsEditor(n){
  if(!teamIsManager())return '';
