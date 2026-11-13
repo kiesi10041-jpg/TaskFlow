@@ -249,6 +249,7 @@ function normalizeNode(n,depth=0){
 }
 function getInitial(){try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
 let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=85,query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
+let team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
 let cloudReady=false;let cfg=(()=>{try{return JSON.parse(localStorage.getItem(SETTINGS_KEY))||{}}catch(e){return {}}})();let session=(()=>{try{return JSON.parse(localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY))||null}catch(e){return null}})();
 const current=()=>projects.find(p=>p.id===currentProjectId)||null;
 function findNode(id,base=current(),parent=null,level=0){if(!base)return null;if(base.id===id)return {n:base,parent,level};for(const child of(base.children||[])){const x=findNode(id,child,base,level+1);if(x)return x}return null}
@@ -660,6 +661,265 @@ async function restoreCloudLogin(){
  }
  if(view==='admin')render();
  if(!$('#cloudBackdrop').classList.contains('hidden'))updateCloudUI();
+}
+
+
+const teamIsManager=()=>team.active&&['admin','lead'].includes(team.role);
+function teamCategoryId(nodeId){
+ const found=findNode(nodeId);if(!found)return null;
+ let n=found.n,level=found.level;
+ if(level===0)return null;
+ while(level>1){const x=findNode(n.id);if(!x?.parent)return null;n=x.parent;level--;}
+ return n.id;
+}
+function teamAssigned(catId){return team.categoryMembers.some(a=>a.category_id===catId&&a.user_id===session?.user?.id)}
+function teamCanEdit(n,level){
+ if(!team.active)return true;
+ if(teamIsManager())return true;
+ return level>=2&&teamAssigned(teamCategoryId(n.id));
+}
+function teamCanAdd(n,level){
+ if(!team.active)return true;
+ if(teamIsManager())return true;
+ return level>=1&&teamAssigned(level===1?n.id:teamCategoryId(n.id));
+}
+function teamCanCreateProject(){return !team.active||teamIsManager()}
+function teamCacheKey(){return 'taskflow-v3-workspace-'+(session?.user?.id||'guest')+'-'+(team.workspace?.id||'none')}
+function teamFlatten(nodes){
+ const out=new Map();
+ const walk=(n,projectId,parentId,depth,position,category)=>{
+  const data={...n};delete data.children;delete data.id;
+  const cat=depth===1?n.id:depth>1?category:null;
+  out.set(n.id,{id:n.id,project_id:projectId,parent_id:parentId,depth,category_id:cat,position,payload:data});
+  (n.children||[]).forEach((c,i)=>walk(c,projectId,n.id,depth+1,i,cat));
+ };
+ nodes.forEach((p,i)=>walk(p,p.id,null,0,i,null));
+ return out;
+}
+function teamRecordSame(a,b){
+ return a&&b&&a.parent_id===b.parent_id&&a.project_id===b.project_id&&
+ a.position===b.position&&JSON.stringify(a.payload)===JSON.stringify(b.payload);
+}
+function teamBuildProjects(rows){
+ const map=new Map(), sorted=[...rows].sort((a,b)=>a.depth-b.depth||a.position-b.position);
+ for(const row of sorted){map.set(row.id,{...row.payload,id:row.id,children:[]})}
+ const roots=[];
+ for(const row of sorted){const item=map.get(row.id),parent=row.parent_id&&map.get(row.parent_id);
+  if(parent)parent.children.push(item);else if(row.depth===0)roots.push(item);
+ }
+ return roots.map(n=>normalizeNode(n));
+}
+async function teamAllRows(path){
+ const chunks=[];let offset=0;
+ for(let i=0;i<20;i++){
+  const rows=await cloudRequest(path,'GET',null,{'Range':offset+'-'+(offset+999)});
+  if(!Array.isArray(rows))throw Error('공동 작업 데이터를 읽지 못했습니다.');
+  chunks.push(...rows);
+  if(rows.length<1000)break;
+  offset+=1000;
+  if(i===19)throw Error('데이터가 너무 많아 나누어 불러오기가 필요합니다.');
+ }
+ return chunks;
+}
+async function teamFetchRows(){return teamAllRows('/rest/v1/taskflow_nodes?select=id,project_id,parent_id,depth,category_id,position,payload,revision&order=depth.asc,position.asc')}
+async function teamLoadMembers(){
+ const wid=encodeURIComponent(team.workspace.id);
+ const [mem,profiles,cats,projs]=await Promise.all([
+  teamAllRows('/rest/v1/taskflow_workspace_members?workspace_id=eq.'+wid+'&select=user_id,role'),
+  teamAllRows('/rest/v1/taskflow_profiles?select=user_id,display_name,email'),
+  teamAllRows('/rest/v1/taskflow_category_members?select=project_id,category_id,user_id'),
+  teamAllRows('/rest/v1/taskflow_project_members?select=project_id,user_id')
+ ]);
+ const profileMap=new Map(profiles.map(x=>[x.user_id,x]));
+ team.members=mem.map(x=>({...x,...(profileMap.get(x.user_id)||{})}));
+ team.categoryMembers=cats;team.projectMembers=projs;
+}
+async function teamRefresh(force=false){
+ if(!team.active||team.busy||team.dirty&&!force)return;
+ const rows=await teamFetchRows();
+ if(team.dirty&&!force)return;
+ team.base=new Map(rows.map(row=>[row.id,row]));
+ projects=teamBuildProjects(rows);
+ if(currentProjectId&&!projects.some(p=>p.id===currentProjectId))currentProjectId=projects[0]?.id||null;
+ if(!currentProjectId)currentProjectId=projects[0]?.id||null;
+ if(selectedId&&!findNode(selectedId))selectedId=currentProjectId;
+ if(focusId&&!findNode(focusId))focusId=null;
+ localStorage.setItem(teamCacheKey(),JSON.stringify(projects));
+ team.dirty=false;team.loaded=true;cloudReady=true;
+ render();
+}
+function teamStop(){
+ if(team.timer)clearTimeout(team.timer);
+ if(team.poll)clearInterval(team.poll);
+ team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
+}
+async function teamActivate(){
+ if(!session?.user?.id||!validCfg())return false;
+ let memberships;
+ try{memberships=await cloudRequest('/rest/v1/taskflow_workspace_members?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=workspace_id,role&limit=10')}
+ catch(e){if(/404|not.found|schema.cache|does.not.exist|could.not.find/i.test(String(e.message)))return false;throw e}
+ if(!Array.isArray(memberships)||!memberships.length)return false;
+ teamStop();
+ const membership=memberships[0];
+ const ws=await cloudRequest('/rest/v1/taskflow_workspaces?id=eq.'+encodeURIComponent(membership.workspace_id)+'&select=id,name');
+ if(!Array.isArray(ws)||!ws.length)throw Error('공동 작업공간을 읽지 못했습니다.');
+ team.active=true;team.workspace=ws[0];team.role=membership.role;
+ await teamLoadMembers();
+ await teamRefresh(true);
+ if(team.poll)clearInterval(team.poll);
+ team.poll=setInterval(()=>{
+  if(team.active&&!team.busy&&!team.dirty&&document.visibilityState!=='hidden')teamRefresh().catch(e=>console.warn('TaskFlow team refresh',e));
+ },15000);
+ return true;
+}
+function teamQueueSave(){
+ if(!team.active)return;
+ team.seq++;team.dirty=true;
+ localStorage.setItem(teamCacheKey(),JSON.stringify(projects));
+ $('#saveLabel').textContent='공동 작업공간에 저장 대기 중';
+ if(team.timer)clearTimeout(team.timer);
+ team.timer=setTimeout(()=>teamFlush().catch(e=>{
+  console.warn('TaskFlow collaborative save:',e);
+  $('#saveLabel').textContent='공동 저장 실패 · 변경내용은 이 기기에 임시 보관됨';
+  notify('공동 저장 실패: '+e.message);
+ }),1300);
+}
+async function teamFlush(){
+ if(!team.active||!team.dirty)return;
+ if(team.busy){team.timer=setTimeout(()=>teamFlush().catch(e=>notify(e.message)),900);return}
+ team.busy=true;const startSeq=team.seq;
+ try{
+  const local=teamFlatten(projects),base=team.base;
+  const remoteRows=await teamFetchRows(),remote=new Map(remoteRows.map(row=>[row.id,row]));
+  const newRows=[],modified=[],removed=[];
+  for(const [id,row] of local){
+   const old=base.get(id),fresh=remote.get(id);
+   if(!old){
+    if(fresh)throw Error('다른 직원이 같은 ID의 과업을 추가했습니다. 새로고침이 필요합니다.');
+    newRows.push(row);
+   }else if(!teamRecordSame(row,old)){
+    if(!fresh||fresh.revision!==old.revision)throw Error('다른 직원이 같은 과업을 먼저 수정했습니다. 수동으로 변경내용을 확인해 주세요.');
+    modified.push({...row,revision:old.revision});
+   }
+  }
+  for(const [id,old] of base)if(!local.has(id)){
+   const fresh=remote.get(id);
+   if(fresh&&fresh.revision!==old.revision)throw Error('다른 직원이 삭제할 과업을 수정했습니다. 최신 정보를 확인해 주세요.');
+   removed.push(old);
+  }
+  const newProjects=newRows.filter(x=>x.depth===0);
+  const deletedProjects=removed.filter(x=>x.depth===0).map(x=>x.id);
+  // New projects first; each subsequent node references an existing parent.
+  for(const p of newProjects)await cloudRequest('/rest/v1/taskflow_projects','POST',{id:p.id,workspace_id:team.workspace.id,created_by:session.user.id});
+  for(const n of newRows.sort((a,b)=>a.depth-b.depth)){
+   await cloudRequest('/rest/v1/taskflow_nodes','POST',{...n,created_by:session.user.id,updated_by:session.user.id});
+  }
+  for(const n of modified){
+   const patch={payload:n.payload,position:n.position,parent_id:n.parent_id};
+   const result=await cloudRequest('/rest/v1/taskflow_nodes?id=eq.'+encodeURIComponent(n.id)+'&revision=eq.'+n.revision+'&select=id,revision','PATCH',patch,{'Prefer':'return=representation'});
+   if(!Array.isArray(result)||result.length!==1)throw Error('동시에 수정된 과업이 발견됐습니다. 다시 불러와 비교해 주세요.');
+  }
+  // Cascading parent deletion removes all descendants; do not delete the same branch twice.
+  const removedIds=new Set(removed.map(x=>x.id));
+  for(const n of removed.filter(x=>x.depth>0&&!deletedProjects.includes(x.project_id)&&!removedIds.has(x.parent_id)).sort((a,b)=>a.depth-b.depth)){
+   await cloudRequest('/rest/v1/taskflow_nodes?id=eq.'+encodeURIComponent(n.id),'DELETE');
+  }
+  for(const id of deletedProjects)await cloudRequest('/rest/v1/taskflow_projects?id=eq.'+encodeURIComponent(id),'DELETE');
+  const latest=await teamFetchRows();
+  team.base=new Map(latest.map(row=>[row.id,row]));
+  if(team.seq===startSeq){
+   team.dirty=false;
+   projects=teamBuildProjects(latest);
+   localStorage.setItem(teamCacheKey(),JSON.stringify(projects));
+   cloudReady=true;
+   $('#saveLabel').textContent='회사 공동 작업공간 저장됨';
+   render();
+  }else{
+   team.dirty=true;
+   team.timer=setTimeout(()=>teamFlush().catch(e=>notify(e.message)),700);
+  }
+ }finally{team.busy=false}
+}
+async function teamCreateWorkspace(){
+ if(!session?.user?.id)throw Error('먼저 로그인하세요.');
+ const name=$('#teamWorkspaceName')?.value.trim();
+ if(!name)throw Error('회사 또는 팀 이름을 입력해 주세요.');
+ const result=await cloudRequest('/rest/v1/taskflow_workspaces?select=id,name','POST',
+  {name,created_by:session.user.id},{'Prefer':'return=representation'});
+ if(!Array.isArray(result)||!result.length)throw Error('작업공간 생성 응답이 없습니다.');
+ await cloudRequest('/rest/v1/rpc/tf_update_my_profile','POST',{p_name:$('#teamMyName')?.value.trim()||''});
+ await teamActivate();notify('공동 작업공간이 생성됐습니다. 필요하면 기존 사업을 가져오세요.');
+}
+async function teamJoinWorkspace(){
+ if(!session?.user?.id)throw Error('먼저 로그인하세요.');
+ const code=$('#teamInviteCode')?.value.trim(),name=$('#teamMyName')?.value.trim()||'';
+ if(!/^[0-9a-f-]{36}$/i.test(code))throw Error('초대코드 형식이 올바르지 않습니다.');
+ await cloudRequest('/rest/v1/rpc/tf_accept_invite','POST',{p_token:code,p_name:name});
+ await teamActivate();notify('공동 작업공간에 참여했습니다.');
+}
+async function teamCreateInvite(){
+ if(!teamIsManager())throw Error('팀장 또는 관리자만 초대할 수 있습니다.');
+ const role=$('#teamInviteRole')?.value||'member';
+ if(role==='lead'&&team.role!=='admin')throw Error('팀장 초대는 관리자만 가능합니다.');
+ const res=await cloudRequest('/rest/v1/taskflow_invites?select=token','POST',
+ {workspace_id:team.workspace.id,role,created_by:session.user.id,max_uses:1},
+ {'Prefer':'return=representation'});
+ if(!Array.isArray(res)||!res[0]?.token)throw Error('초대코드 생성 실패');
+ $('#teamIssuedCode').value=res[0].token;
+ notify('초대코드가 생성됐습니다. 팀원에게 전달하세요.');
+}
+async function teamAssignCategory(categoryId,userId){
+ if(!teamIsManager())throw Error('팀장 또는 관리자만 배정할 수 있습니다.');
+ const active=team.categoryMembers.some(x=>x.category_id===categoryId&&x.user_id===userId);
+ const path='/rest/v1/taskflow_category_members';
+ if(active)await cloudRequest(path+'?category_id=eq.'+encodeURIComponent(categoryId)+'&user_id=eq.'+encodeURIComponent(userId),'DELETE');
+ else await cloudRequest(path,'POST',{project_id:currentProjectId,category_id:categoryId,user_id:userId});
+ await teamLoadMembers();renderInspector();notify(active?'수행과업 배정을 해제했습니다.':'팀원에게 수행과업을 배정했습니다.');
+}
+function teamAssignmentsEditor(n){
+ if(!teamIsManager())return '';
+ const members=team.members.filter(m=>m.role==='member');
+ if(!members.length)return '<div class="note-box">팀원을 초대하면 이 수행과업의 담당자를 지정할 수 있습니다.</div>';
+ return `<div class="team-assignment"><h3>수행과업 참여 팀원</h3><p>배정된 팀원은 이 과업 아래의 세부과업과 실행단계를 생성·수정할 수 있습니다.</p>${members.map(m=>{
+ const chosen=team.categoryMembers.some(a=>a.category_id===n.id&&a.user_id===m.user_id);
+ return `<div class="team-member-row"><span>${esc(m.display_name||m.email||'팀원')} ${m.email&&m.display_name?`<small>${esc(m.email)}</small>`:''}</span><button class="btn ${chosen?'':'verylight'}" data-team-category="${esc(n.id)}" data-team-user="${esc(m.user_id)}" type="button">${chosen?'✓ 배정됨 · 해제':'＋ 담당 지정'}</button></div>`;
+ }).join('')}</div>`;
+}
+function renderTeamAdmin(){
+ if(!session?.user?.id)return '<section class="admin-card"><h3>회사 공동 작업</h3><p>먼저 로그인하면 팀 작업공간을 생성하거나 초대코드로 참여할 수 있습니다.</p></section>';
+ if(!team.active)return `<section class="admin-card team-admin-card"><h3>회사 공동 작업공간 시작</h3><p>기존 개인 사업 자료는 그대로 두고 새로운 공동 작업공간을 만듭니다. 직원은 각자 계정으로 참여합니다.</p>
+ <div class="field"><span>내 이름</span><input id="teamMyName" placeholder="홍길동"></div>
+ <div class="field"><span>새 작업공간 이름 (관리자용)</span><input id="teamWorkspaceName" placeholder="예: 한국온라인창업컨설팅"></div>
+ <button class="btn primary" id="teamCreate">＋ 회사 작업공간 생성</button><hr>
+ <div class="field"><span>팀장이 보내준 초대코드</span><input id="teamInviteCode" placeholder="초대코드를 붙여 넣으세요"></div>
+ <button class="btn" id="teamJoin">초대코드로 참여</button>
+ <p class="team-help">관리자·팀장이 프로젝트와 수행과업을 생성하고, 배정된 팀원은 그 아래 세부과업을 직접 관리합니다.</p></section>`;
+ return `<section class="admin-card team-admin-card"><h3>회사 공동 작업공간</h3>
+ <div class="admin-row"><span class="admin-k">회사 / 팀</span><strong>${esc(team.workspace.name)}</strong></div>
+ <div class="admin-row"><span class="admin-k">내 권한</span><strong>${{admin:'최고관리자',lead:'팀장 / PM',member:'참여 팀원'}[team.role]||team.role}</strong></div>
+ <div class="admin-row"><span class="admin-k">구성원</span><strong>${team.members.length}명</strong></div>
+ ${teamIsManager()?`<hr><h3>직원 초대</h3><p>직원에게 코드를 전달하면 개인 계정으로 회사 작업공간에 참여할 수 있습니다.</p>
+ <div class="field"><span>초대 권한</span><select id="teamInviteRole"><option value="member">팀원</option>${team.role==='admin'?'<option value="lead">팀장 / PM</option>':''}</select></div>
+ <button class="btn" id="teamIssueInvite">초대코드 발급</button>
+ <div class="field" style="margin-top:10px"><span>발급된 코드</span><input id="teamIssuedCode" placeholder="발급 후 표시" readonly></div>
+ <button class="btn verylight" id="teamCopyCode">코드 복사</button>`:''}
+ <hr><h3>참여자 목록</h3>${team.members.map(m=>`<div class="admin-row"><span class="admin-k">${esc(m.display_name||m.email||'이름 미설정')}</span><strong>${m.role==='admin'?'관리자':m.role==='lead'?'팀장':'팀원'}</strong></div>`).join('')}
+ ${teamIsManager()?`<hr><h3>기존 사업 가져오기</h3><p>기존 개인 계정의 사업을 공동 작업공간으로 복사합니다. 원본 개인 자료는 삭제하지 않습니다.</p><button class="btn" id="teamImport">↓ 기존 사업 공동 공간에 복사</button>`:''}
+ <div class="admin-actions" style="margin-top:15px"><button class="btn verylight" id="teamReload">↻ 공동 데이터 다시 불러오기</button></div>
+ </section>`;
+}
+async function teamImportLegacy(){
+ if(!teamIsManager())throw Error('관리자나 팀장만 기존 사업을 가져올 수 있습니다.');
+ const r=await cloudRequest('/rest/v1/taskflow_store?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=data');
+ const fromCloud=Array.isArray(r)&&Array.isArray(r[0]?.data?.projects)?r[0].data.projects:null;
+ const local=(()=>{try{return JSON.parse(localStorage.getItem(KEY))}catch(e){return null}})();
+ const source=fromCloud?.length?fromCloud:local;
+ if(!Array.isArray(source)||!source.length)throw Error('현재 계정의 이전 사업 데이터가 없습니다. JSON 백업을 확인해 주세요.');
+ const already=new Set(projects.map(x=>x.id));
+ const imports=source.map(p=>normalizeNode(p)).filter(p=>!already.has(p.id));
+ if(!imports.length)throw Error('이미 공동 공간에 있는 사업입니다. 중복 복사는 하지 않습니다.');
+ if(!confirm('이전 사업 '+imports.length+'개를 회사 작업공간에 복사하시겠습니까? 개인 계정 원본은 유지됩니다.'))return;
+ projects.push(...imports);mutate();notify('사업 복사를 요청했습니다. 공동 저장 완료 표시를 확인하세요.');
 }
 
 function validCfg(){return /^https:\/\/[a-z0-9.-]+\.supabase\.co\/?$/i.test((cfg.url||'').trim())&&typeof cfg.key==='string'&&cfg.key.length>20}
