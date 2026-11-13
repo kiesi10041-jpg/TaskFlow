@@ -130,8 +130,8 @@ as $$
 declare par public.taskflow_nodes%rowtype;
 begin
  if tg_op='UPDATE' then
-  if new.id<>old.id or new.project_id<>old.project_id or new.created_by<>old.created_by then
-   raise exception 'Cannot move a node between projects or change its ID';
+  if new.id<>old.id or new.project_id<>old.project_id or new.created_by<>old.created_by or new.parent_id is distinct from old.parent_id then
+   raise exception 'Cannot change a node ID, project or parent';
   end if;
   new.created_at=old.created_at;
   new.revision=old.revision+1;
@@ -328,3 +328,4 @@ create policy tf_node_delete on public.taskflow_nodes for delete to authenticate
 using(public.tf_can_edit_node(project_id,depth,category_id));
 
 commit;
+notify pgrst, 'reload schema';
