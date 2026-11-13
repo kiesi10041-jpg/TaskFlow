@@ -264,7 +264,18 @@ function normalizeNode(n,depth=0){
  const assignees=ownerNames(n);
  return {id:String(n.id||uid()),title:String(n.title||'제목 없음').slice(0,130),status,note:String(n.note||'').slice(0,20000),assignee:assignees.join(', ').slice(0,400),assignees,due:String(n.due||'').slice(0,40),children,...(depth===0?{client:String(n.client||'').slice(0,100),createdAt:String(n.createdAt||today()),contractDate:String(n.contractDate||'').slice(0,10),deadline:String(n.deadline||'').slice(0,10),projectManager:String(n.projectManager||'').slice(0,80),businessContact:String(n.businessContact||'').slice(0,80),businessPhone:String(n.businessPhone||'').slice(0,80)}:{})};
 }
-function getInitial(){try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
+function getInitial(){try{
+ const marker=JSON.parse(localStorage.getItem('taskflow-v3-last-team')||'null');
+ if(marker?.userId){
+  const storedSession=JSON.parse(localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY)||'null');
+  if(storedSession?.user?.id===marker.userId){
+   const cache=JSON.parse(localStorage.getItem('taskflow-v3-workspace-'+marker.userId+'-'+marker.workspaceId)||'[]');
+   return Array.isArray(cache)?cache.map(p=>normalizeNode(p)):[];
+  }
+  return [];
+ }
+}catch(e){}
+ try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
 let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=85,query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
 let team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
 let cloudReady=false;let cfg=(()=>{try{return JSON.parse(localStorage.getItem(SETTINGS_KEY))||{}}catch(e){return {}}})();let session=(()=>{try{return JSON.parse(localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY))||null}catch(e){return null}})();
@@ -643,7 +654,7 @@ function persistSession(next){
  }
 }
 function clearSavedSession(){
- if(team.active){teamStop();projects=[];currentProjectId=null;selectedId=null;focusId=null;view='dashboard'}
+ if(team.active){localStorage.removeItem(teamCacheKey());teamStop();projects=[];currentProjectId=null;selectedId=null;focusId=null;view='dashboard'}
  session=null;cloudReady=false;clearTimeout(cloudTimer);
  localStorage.removeItem(SESSION_KEY);sessionStorage.removeItem(SESSION_KEY);
 }
@@ -761,6 +772,7 @@ async function teamLoadMembers(){
 }
 async function teamRefresh(force=false){
  if(!team.active||team.busy||team.dirty&&!force)return;
+ await teamLoadMembers();
  const rows=await teamFetchRows();
  if(team.dirty&&!force)return;
  team.base=new Map(rows.map(row=>[row.id,row]));
@@ -789,6 +801,7 @@ async function teamActivate(){
  const ws=await cloudRequest('/rest/v1/taskflow_workspaces?id=eq.'+encodeURIComponent(membership.workspace_id)+'&select=id,name');
  if(!Array.isArray(ws)||!ws.length)throw Error('공동 작업공간을 읽지 못했습니다.');
  team.active=true;team.workspace=ws[0];team.role=membership.role;
+ localStorage.setItem('taskflow-v3-last-team',JSON.stringify({userId:session.user.id,workspaceId:team.workspace.id}));
  await teamLoadMembers();
  await teamRefresh(true);
  if(team.poll)clearInterval(team.poll);
