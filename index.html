@@ -294,17 +294,14 @@ function normalizeNode(n,depth=0){
 function getInitial(){try{
  const marker=JSON.parse(localStorage.getItem('taskflow-v3-last-team')||'null');
  if(marker?.userId){
-  const storedSession=JSON.parse(localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY)||'null');
-  if(storedSession?.user?.id===marker.userId){
-   const cache=JSON.parse(localStorage.getItem('taskflow-v3-workspace-'+marker.userId+'-'+marker.workspaceId)||'[]');
-   return Array.isArray(cache)?cache.map(p=>normalizeNode(p)):[];
-  }
+  // Never expose cached company records before live database permission checks.
+  // A former admin may have been demoted by a successor since the last visit.
   return [];
  }
 }catch(e){}
  try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
 let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=85,query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
-let team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
+let team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],handovers:[],handoverReady:false,audit:new Map(),base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
 let cloudReady=false;let cfg=(()=>{try{return JSON.parse(localStorage.getItem(SETTINGS_KEY))||{}}catch(e){return {}}})();let session=(()=>{try{return JSON.parse(localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY))||null}catch(e){return null}})();
 const current=()=>projects.find(p=>p.id===currentProjectId)||null;
 function findNode(id,base=current(),parent=null,level=0){if(!base)return null;if(base.id===id)return {n:base,parent,level};for(const child of(base.children||[])){const x=findNode(id,child,base,level+1);if(x)return x}return null}
@@ -323,8 +320,8 @@ function notify(str){const el=$('#toast');el.textContent=str;el.classList.remove
 function setProject(id,next='map'){if(!projects.some(p=>p.id===id))return;currentProjectId=id;selectedId=id;focusId=allWork(current())[0]?.work.id||null;view=next;query='';$('#app').classList.remove('show-side');render()}
 function changeView(to){if(to!=='dashboard'&&to!=='admin'&&!current()){view='dashboard'}else view=to;if(view==='admin')setInspectorOpen(false);if(view==='detail'&&(!focusId||!findNode(focusId)))focusId=allWork(current())[0]?.work.id||null;$('#app').classList.remove('show-side');render()}
 function setInspectorOpen(open){const app=$('#app');app.classList.toggle('inspector-closed',!open);app.classList.toggle('show-inspector',!!open);const btn=$('#editInspector');if(btn){btn.textContent=open?'✕ 패널 닫기':'✎ 항목 편집';btn.setAttribute('aria-expanded',String(!!open))}}
-function titleFor(){return {admin:'관리자 설정',dashboard:'전체 사업 통합 현황',map:current()?.title||'연결형 과업도',detail:current()?.title||'세부 진행단계',print:current()?.title||'A4 출력 체크시트'}[view]}
-function renderSidebar(){const p=current();$('#newProject').classList.toggle('hidden',!teamCanCreateProject());$('#sideCount').textContent=projects.length;$('#allProjectButton').classList.toggle('active',view==='dashboard');$('#adminMenu').classList.toggle('active',view==='admin');$('#projectList').innerHTML=projects.map(x=>{const d=projectDeadlineState(x);return `<button class="project-nav ${x.id===p?.id&&view!=='dashboard'&&view!=='admin'?'active':''}" data-project="${esc(x.id)}"><i class="dot"></i><span class="navname">${esc(x.title)}<small>${allWork(x).length}개 세부과업 · ${rate(x)}% 완료</small><span class="sidebar-project-due ${d.kind}">${esc(d.label)}${x.deadline?' · '+esc(x.deadline.slice(5).replace('-','.')):''}</span></span></button>`}).join('')}
+function titleFor(){return {admin:team.active&&!teamIsManager()?'내 계정·팀 정보':'관리자 설정',dashboard:'전체 사업 통합 현황',map:current()?.title||'연결형 과업도',detail:current()?.title||'세부 진행단계',print:current()?.title||'A4 출력 체크시트'}[view]}
+function renderSidebar(){const p=current();$('#newProject').classList.toggle('hidden',!teamCanCreateProject());$('#sideCount').textContent=projects.length;$('#allProjectButton').classList.toggle('active',view==='dashboard');$('#adminMenu').classList.toggle('active',view==='admin');$('#adminMenu').innerHTML=(team.active&&!teamIsManager()?'<span>◉</span> 내 계정·팀 정보':'<span>⚙</span> 관리자 설정');$('#projectList').innerHTML=projects.map(x=>{const d=projectDeadlineState(x);return `<button class="project-nav ${x.id===p?.id&&view!=='dashboard'&&view!=='admin'?'active':''}" data-project="${esc(x.id)}"><i class="dot"></i><span class="navname">${esc(x.title)}<small>${allWork(x).length}개 세부과업 · ${rate(x)}% 완료</small><span class="sidebar-project-due ${d.kind}">${esc(d.label)}${x.deadline?' · '+esc(x.deadline.slice(5).replace('-','.')):''}</span></span></button>`}).join('')}
 function renderHead(){const p=current(),s=(view==='dashboard'||view==='admin')?aggregate():stats(p);$('#pageEyebrow').textContent=view==='admin'?'PERSONAL ADMIN':view==='dashboard'?'PORTFOLIO OVERVIEW':view==='map'?'CONNECTED TASK MAP':view==='detail'?'WORKSTREAM PROGRESS':'A4 CHECKLIST';$('#pageTitle').textContent=titleFor();$('#pageSub').textContent=view==='admin'?'계정과 클라우드 저장 상태를 관리합니다.':view==='dashboard'?'전체 사업의 계약정보, 마감상태와 과업 진행률을 확인합니다.':view==='map'?'사업 → 지원항목 → 세부과업 → 실행단계가 선으로 연결됩니다.':view==='detail'?'세부과업을 선택하여 실행단계를 순서대로 관리합니다.':'현재 선택한 사업의 세부과업을 A4 가로 형식으로 출력합니다.';if(view==='map'&&p){const d=projectDeadlineState(p);$('#pageSub').textContent=['계약 '+(p.contractDate||'미입력'),'마감 '+(p.deadline||'미입력'),'PM '+(p.projectManager||'미입력'),d.label].join('  ·  ')}if(team.active&&view==='dashboard')$('#pageSub').textContent=team.workspace.name+' · 전체 프로젝트 및 팀원별 업무 진행현황';$('#doneNum').textContent=s.done;$('#totalNum').textContent=s.total;$('#progressNum').textContent=s.total?Math.round(100*s.done/s.total)+'%':'0%';for(const name of ['Dashboard','Map','Detail','Paper'])$('#tab'+name).classList.toggle('active',view===({Dashboard:'dashboard',Map:'map',Detail:'detail',Paper:'print'}[name]));$('.toolbar .tabs').classList.toggle('hidden',view==='admin');$('#zoomTools').classList.toggle('hidden',view!=='map');$('#zoomValue').textContent=zoom+'%';$('#editInspector').classList.toggle('hidden',view==='dashboard'||view==='admin');const inspectorVisible=window.innerWidth<=970?$('#app').classList.contains('show-inspector'):!$('#app').classList.contains('inspector-closed');$('#editInspector').textContent=inspectorVisible?'✕ 패널 닫기':'✎ 항목 편집';$('#editInspector').setAttribute('aria-expanded',String(inspectorVisible));$('#duplicateCurrent').classList.toggle('hidden',view==='dashboard'||view==='admin'||!teamCanCreateProject());$('#mapPrintButton').classList.toggle('hidden',view!=='map');$('#printButton').classList.toggle('hidden',view==='dashboard'||view==='admin')}
 function portfolioStatusData(){
  const s=aggregate(),total=s.total,done=s.done,doing=s.doing,blocked=s.blocked;
@@ -591,7 +588,7 @@ function projectInfoEditor(n){
  ${field('사업 담당자','editBusinessContact','text',n.businessContact||'','담당자 성명')}
  </div>${field('사업 담당자 연락처','editBusinessPhone','tel',n.businessPhone||'','010-0000-0000')}</section>`;
 }
-function renderInspector(){if(view==='admin'){$('#inspectorBody').innerHTML='<div class="eyebrow">SETTINGS</div><h2>관리자 설정</h2><p class="inspector-hint">계정과 클라우드 저장 상태를 확인합니다.</p>';return}if(view==='dashboard'){$('#inspectorBody').innerHTML=`<div class="eyebrow">PORTFOLIO OVERVIEW</div><h2>전체 사업 관리</h2><p class="inspector-hint">사업별 진행현황을 하나의 화면에서 확인합니다.</p><div class="note-box">왼쪽에서 사업을 선택하면 <b>지원항목 → 세부과업 → 실행단계</b>로 연결된 구조도를 열 수 있습니다.</div><hr><div class="note-box">등록된 사업 <strong>${projects.length}개</strong><br>진행단계 <strong>${aggregate().total}개</strong><br>완료 단계 <strong>${aggregate().done}개</strong></div><hr><p class="help">사업은 서로 분리해 관리하며, JSON 백업에는 모든 사업이 함께 저장됩니다. 클라우드 공유는 별도 로그인·DB 설정 후 사용 가능합니다.</p>`;return}const p=current(),f=findNode(selectedId)||findNode(p?.id);if(!f){$('#inspectorBody').innerHTML=`<div class="eyebrow">TASK INSPECTOR</div><h2>항목 편집</h2><p class="inspector-hint">사업을 선택하면 과업의 이름, 담당자, 기한, 진행상태를 수정할 수 있습니다.</p>`;return}
+function renderInspector(){if(view==='admin'){$('#inspectorBody').innerHTML='<div class="eyebrow">SETTINGS</div><h2>'+(team.active&&!teamIsManager()?'내 계정·팀 정보':'관리자 설정')+'</h2><p class="inspector-hint">계정과 팀 정보를 확인합니다.</p>';return}if(view==='dashboard'){$('#inspectorBody').innerHTML=`<div class="eyebrow">PORTFOLIO OVERVIEW</div><h2>전체 사업 관리</h2><p class="inspector-hint">사업별 진행현황을 하나의 화면에서 확인합니다.</p><div class="note-box">왼쪽에서 사업을 선택하면 <b>지원항목 → 세부과업 → 실행단계</b>로 연결된 구조도를 열 수 있습니다.</div><hr><div class="note-box">등록된 사업 <strong>${projects.length}개</strong><br>진행단계 <strong>${aggregate().total}개</strong><br>완료 단계 <strong>${aggregate().done}개</strong></div><hr><p class="help">사업은 서로 분리해 관리하며, JSON 백업에는 모든 사업이 함께 저장됩니다. 클라우드 공유는 별도 로그인·DB 설정 후 사용 가능합니다.</p>`;return}const p=current(),f=findNode(selectedId)||findNode(p?.id);if(!f){$('#inspectorBody').innerHTML=`<div class="eyebrow">TASK INSPECTOR</div><h2>항목 편집</h2><p class="inspector-hint">사업을 선택하면 과업의 이름, 담당자, 기한, 진행상태를 수정할 수 있습니다.</p>`;return}
  const {n,parent,level}=f,st=stateOf(n,level),s=stats(n,level),labels=['사업명','지원항목','세부과업','진행단계'],siblingIndex=parent?parent.children.findIndex(x=>x.id===n.id):-1,editable=teamCanEdit(n,level),canAdd=teamCanAdd(n,level);$('#inspectorBody').innerHTML=`<div class="eyebrow">ITEM INSPECTOR</div><h2>${labels[Math.min(level,3)]} ${editable?'편집':'조회'}</h2><p class="inspector-hint">${editable?'사업 및 과업 구조를 변경하거나 완료 상태를 관리합니다.':'상위 구조는 팀장·관리자만 수정할 수 있습니다. 배정된 수행과업 아래에 하위 과업을 추가해 주세요.'}</p><fieldset class="inspector-edit-scope" ${editable?'':'disabled'}><label class="field"><span>이름</span><input id="editName" maxlength="130" value="${esc(n.title)}"></label>${level===0?`<label class="field"><span>기업명 / 발주처</span><input id="editCompany" maxlength="100" value="${esc(n.client||'')}"></label>${projectInfoEditor(n)}`:''}<label class="field"><span>메모 / 수행내용</span><textarea id="editNote" placeholder="진행내용 및 필요한 사항">${esc(n.note||'')}</textarea></label>${level>=2?assigneeEditor(n):''}${inspectorStatusPanel(n,level,st)}${s.total?`<div class="note-box">진행단계 완료: <strong>${s.done} / ${s.total} (${rate(n,level)}%)</strong></div>`:''}<button class="btn primary" id="saveNode" style="width:100%;margin-top:15px">변경사항 저장</button></fieldset>${team.active&&level===1?teamAssignmentsEditor(n):''}<hr><div class="field"><span>구조 편집</span><p class="inspector-section-hint">하위 항목을 추가하거나 같은 단계 안에서 표시 순서를 바꿉니다.</p><div class="inspector-actions">${canAdd?`<button class="btn verylight" data-add="${esc(n.id)}">＋ 하위 단계 추가</button>`:''}${editable&&parent?`<button class="btn" data-move="-1" ${siblingIndex===0?'disabled':''}>↑ 위로 이동</button><button class="btn" data-move="1" ${siblingIndex===parent.children.length-1?'disabled':''}>↓ 아래로 이동</button>`:''}${level===2?`<button class="btn" data-focus="${esc(n.id)}">실행단계 보기 →</button>`:''}</div></div><div class="actions"><button class="btn" id="closeInspector">✕ 패널 닫기</button></div>${editable?`<div class="inspector-danger"><button class="btn danger" data-remove="${esc(n.id)}">${level===0?'사업 전체 삭제':'이 항목 삭제'}</button></div>`:''}<hr><p class="help">항목 이름과 메모는 ‘변경사항 저장’으로 저장됩니다. 완료 상태는 즉시 저장됩니다.<br>하위 항목의 완료 표시만으로 상위 단계가 자동 완료되지 않습니다. 상위 단계의 최종 완료를 직접 표시해 주세요.<br>${team.active?'모든 변경은 회사 공동 작업공간에 저장되어 참여자 화면에 자동으로 반영됩니다.':'모든 변경은 이 브라우저에 먼저 저장되며, 클라우드 연결 후 동기화됩니다.'}</p>`}
 function renderAdmin(){
  const a=aggregate(),signed=!!session?.user?.id,connected=cloudReady&&signed;
@@ -723,6 +720,8 @@ async function restoreCloudLogin(){
 
 
 const TEAM_INVITE_PENDING_KEY='taskflow-v3-pending-invite';
+const TEAM_FOUNDER_EMAIL='zotozo12@naver.com';
+const teamCanBootstrap=()=>!!session?.user?.id&&String(session.user.email||'').trim().toLowerCase()===TEAM_FOUNDER_EMAIL;
 function teamPublicKeySafe(key){
  if(typeof key!=='string')return false;
  if(key.startsWith('sb_publishable_'))return true;
@@ -825,18 +824,26 @@ async function teamAllRows(path){
  }
  return chunks;
 }
-async function teamFetchRows(){return teamAllRows('/rest/v1/taskflow_nodes?select=id,project_id,parent_id,depth,category_id,position,payload,revision&order=depth.asc,position.asc')}
+async function teamFetchRows(){return teamAllRows('/rest/v1/taskflow_nodes?select=id,project_id,parent_id,depth,category_id,position,payload,revision,created_by,updated_by,created_at,updated_at&order=depth.asc,position.asc')}
 async function teamLoadMembers(){
  const wid=encodeURIComponent(team.workspace.id);
  const [mem,profiles,cats,projs]=await Promise.all([
   teamAllRows('/rest/v1/taskflow_workspace_members?workspace_id=eq.'+wid+'&select=user_id,role'),
-  teamAllRows('/rest/v1/taskflow_profiles?select=user_id,display_name,email'),
+  teamAllRows('/rest/v1/taskflow_profiles?select=user_id,display_name,email,department,job_title'),
   teamAllRows('/rest/v1/taskflow_category_members?select=project_id,category_id,user_id'),
   teamAllRows('/rest/v1/taskflow_project_members?select=project_id,user_id')
  ]);
  const profileMap=new Map(profiles.map(x=>[x.user_id,x]));
  team.members=mem.map(x=>({...x,...(profileMap.get(x.user_id)||{})}));
  team.categoryMembers=cats;team.projectMembers=projs;
+ try{
+  team.handovers=await teamAllRows('/rest/v1/taskflow_admin_transfers?workspace_id=eq.'+wid+'&select=id,from_user,to_user,status,created_at,expires_at&order=created_at.desc&limit=25');
+  team.handoverReady=true;
+ }catch(e){
+  if(/404|42P01|PGRST20[45]|schema.cache|does.not.exist|not.found/i.test(String(e.code||'')+' '+e.message)){
+   team.handovers=[];team.handoverReady=false;
+  }else throw e;
+ }
 }
 async function teamRefresh(force=false){
  if(!team.active||team.busy||team.dirty&&!force)return;
@@ -845,6 +852,7 @@ async function teamRefresh(force=false){
  const rows=await teamFetchRows();
  if(team.dirty&&!force)return;
  team.base=new Map(rows.map(row=>[row.id,row]));
+ team.audit=new Map(rows.map(row=>[row.id,{created_by:row.created_by,updated_by:row.updated_by,created_at:row.created_at,updated_at:row.updated_at}]));
  projects=teamBuildProjects(rows);
  if(currentProjectId&&!projects.some(p=>p.id===currentProjectId))currentProjectId=projects[0]?.id||null;
  if(!currentProjectId)currentProjectId=projects[0]?.id||null;
@@ -857,7 +865,7 @@ async function teamRefresh(force=false){
 function teamStop(){
  if(team.timer)clearTimeout(team.timer);
  if(team.poll)clearInterval(team.poll);
- team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
+ team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],handovers:[],handoverReady:false,audit:new Map(),base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
 }
 async function teamActivate(){
  if(!session?.user?.id||!validCfg())return false;
@@ -936,6 +944,7 @@ async function teamFlush(){
   for(const id of deletedProjects)await cloudRequest('/rest/v1/taskflow_projects?id=eq.'+encodeURIComponent(id),'DELETE');
   const latest=await teamFetchRows();
   team.base=new Map(latest.map(row=>[row.id,row]));
+  team.audit=new Map(latest.map(row=>[row.id,{created_by:row.created_by,updated_by:row.updated_by,created_at:row.created_at,updated_at:row.updated_at}]));
   if(team.seq===startSeq){
    team.dirty=false;
    projects=teamBuildProjects(latest);
@@ -981,6 +990,7 @@ async function teamCheckSetup(){
 }
 async function teamCreateWorkspace(){
  if(!session?.user?.id)throw Error('먼저 로그인하세요.');
+ if(!teamCanBootstrap())throw Error('회사 최초 개설은 지정된 최고관리자 계정에서만 가능합니다. 직원은 초대코드로 참여하세요.');
  const name=$('#teamWorkspaceName')?.value.trim();
  if(!name)throw Error('회사 또는 팀 이름을 입력해 주세요.');
  await teamCheckSetup();
