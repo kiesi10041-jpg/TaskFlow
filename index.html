@@ -195,6 +195,28 @@
 .team-setup-feedback.error{background:#fff0f1;color:#a33345;border:1px solid #f5d1d6}
 .team-setup-feedback.success{background:#ecf8f2;color:#137b54;border:1px solid #c5ead8}
 .team-setup-feedback.checking{background:#f0f5ff;color:#4264a5;border:1px solid #d9e3f9}
+
+.team-onboard-profile{margin-top:12px}
+.team-onboard-profile h3,.team-profile-edit h3{font-size:13px;margin-bottom:5px}
+.team-profile-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;max-width:900px}
+.team-profile-grid .field{min-width:0}.team-profile-grid input{width:100%}
+.team-profile-edit{margin:20px 0 14px;border:1px solid #e0e9f5;border-radius:12px;padding:16px;background:#f9fbff}
+.team-profile-edit p{margin:5px 0 12px}
+.team-staff-list{border:1px solid #e3eaf4;border-radius:10px;overflow:hidden;margin-top:12px}
+.team-staff-row{display:grid;grid-template-columns:1.45fr 1fr 1fr .9fr;align-items:center;gap:12px;border-top:1px solid #ecf0f6;padding:12px;font-size:11px}
+.team-staff-row:first-child{border-top:0}.team-staff-row.heading{background:#f0f4fb;color:#637795;font-weight:850}
+.team-staff-row small{display:block;color:#8695a9;font-weight:400;margin-top:3px;overflow-wrap:anywhere}
+.team-workspace-heading{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.team-workspace-heading span{font-size:11px;padding:4px 10px;border-radius:8px;color:#3666b5;background:#eef4ff;font-weight:800}
+.team-transfer-panel{margin-top:20px;border:1px solid #dae4f2;border-radius:11px;padding:17px;background:#f8fafc}
+.team-transfer-panel.received{border-color:#bde2d0;background:#f1fbf5}
+.team-transfer-panel h3{font-size:13px;margin:0 0 7px}
+.team-transfer-panel p{font-size:12px;line-height:1.7;color:#64748b}
+.team-transfer-panel select{width:100%;max-width:480px;padding:10px;border-radius:8px;border:1px solid #d8e2f0}
+.team-node-audit{margin-top:14px;border:1px solid #e1e8f2;background:#f8fafc;border-radius:10px;padding:12px;color:#4c6384;font-size:11px;line-height:1.9}
+.team-node-audit strong{display:block;font-size:11px;color:#304563;margin-bottom:5px}
+.team-node-audit small{color:#8895aa}
+@media(max-width:700px){.team-profile-grid{grid-template-columns:1fr}.team-staff-row{grid-template-columns:1fr 1fr;gap:6px}.team-staff-row.heading{display:none}.team-staff-row>span{overflow-wrap:anywhere}}
 </style>
 </head>
 <body>
@@ -589,7 +611,7 @@ function projectInfoEditor(n){
  </div>${field('사업 담당자 연락처','editBusinessPhone','tel',n.businessPhone||'','010-0000-0000')}</section>`;
 }
 function renderInspector(){if(view==='admin'){$('#inspectorBody').innerHTML='<div class="eyebrow">SETTINGS</div><h2>'+(team.active&&!teamIsManager()?'내 계정·팀 정보':'관리자 설정')+'</h2><p class="inspector-hint">계정과 팀 정보를 확인합니다.</p>';return}if(view==='dashboard'){$('#inspectorBody').innerHTML=`<div class="eyebrow">PORTFOLIO OVERVIEW</div><h2>전체 사업 관리</h2><p class="inspector-hint">사업별 진행현황을 하나의 화면에서 확인합니다.</p><div class="note-box">왼쪽에서 사업을 선택하면 <b>지원항목 → 세부과업 → 실행단계</b>로 연결된 구조도를 열 수 있습니다.</div><hr><div class="note-box">등록된 사업 <strong>${projects.length}개</strong><br>진행단계 <strong>${aggregate().total}개</strong><br>완료 단계 <strong>${aggregate().done}개</strong></div><hr><p class="help">사업은 서로 분리해 관리하며, JSON 백업에는 모든 사업이 함께 저장됩니다. 클라우드 공유는 별도 로그인·DB 설정 후 사용 가능합니다.</p>`;return}const p=current(),f=findNode(selectedId)||findNode(p?.id);if(!f){$('#inspectorBody').innerHTML=`<div class="eyebrow">TASK INSPECTOR</div><h2>항목 편집</h2><p class="inspector-hint">사업을 선택하면 과업의 이름, 담당자, 기한, 진행상태를 수정할 수 있습니다.</p>`;return}
- const {n,parent,level}=f,st=stateOf(n,level),s=stats(n,level),labels=['사업명','지원항목','세부과업','진행단계'],siblingIndex=parent?parent.children.findIndex(x=>x.id===n.id):-1,editable=teamCanEdit(n,level),canAdd=teamCanAdd(n,level);$('#inspectorBody').innerHTML=`<div class="eyebrow">ITEM INSPECTOR</div><h2>${labels[Math.min(level,3)]} ${editable?'편집':'조회'}</h2><p class="inspector-hint">${editable?'사업 및 과업 구조를 변경하거나 완료 상태를 관리합니다.':'상위 구조는 팀장·관리자만 수정할 수 있습니다. 배정된 수행과업 아래에 하위 과업을 추가해 주세요.'}</p><fieldset class="inspector-edit-scope" ${editable?'':'disabled'}><label class="field"><span>이름</span><input id="editName" maxlength="130" value="${esc(n.title)}"></label>${level===0?`<label class="field"><span>기업명 / 발주처</span><input id="editCompany" maxlength="100" value="${esc(n.client||'')}"></label>${projectInfoEditor(n)}`:''}<label class="field"><span>메모 / 수행내용</span><textarea id="editNote" placeholder="진행내용 및 필요한 사항">${esc(n.note||'')}</textarea></label>${level>=2?assigneeEditor(n):''}${inspectorStatusPanel(n,level,st)}${s.total?`<div class="note-box">진행단계 완료: <strong>${s.done} / ${s.total} (${rate(n,level)}%)</strong></div>`:''}<button class="btn primary" id="saveNode" style="width:100%;margin-top:15px">변경사항 저장</button></fieldset>${team.active&&level===1?teamAssignmentsEditor(n):''}<hr><div class="field"><span>구조 편집</span><p class="inspector-section-hint">하위 항목을 추가하거나 같은 단계 안에서 표시 순서를 바꿉니다.</p><div class="inspector-actions">${canAdd?`<button class="btn verylight" data-add="${esc(n.id)}">＋ 하위 단계 추가</button>`:''}${editable&&parent?`<button class="btn" data-move="-1" ${siblingIndex===0?'disabled':''}>↑ 위로 이동</button><button class="btn" data-move="1" ${siblingIndex===parent.children.length-1?'disabled':''}>↓ 아래로 이동</button>`:''}${level===2?`<button class="btn" data-focus="${esc(n.id)}">실행단계 보기 →</button>`:''}</div></div><div class="actions"><button class="btn" id="closeInspector">✕ 패널 닫기</button></div>${editable?`<div class="inspector-danger"><button class="btn danger" data-remove="${esc(n.id)}">${level===0?'사업 전체 삭제':'이 항목 삭제'}</button></div>`:''}<hr><p class="help">항목 이름과 메모는 ‘변경사항 저장’으로 저장됩니다. 완료 상태는 즉시 저장됩니다.<br>하위 항목의 완료 표시만으로 상위 단계가 자동 완료되지 않습니다. 상위 단계의 최종 완료를 직접 표시해 주세요.<br>${team.active?'모든 변경은 회사 공동 작업공간에 저장되어 참여자 화면에 자동으로 반영됩니다.':'모든 변경은 이 브라우저에 먼저 저장되며, 클라우드 연결 후 동기화됩니다.'}</p>`}
+ const {n,parent,level}=f,st=stateOf(n,level),s=stats(n,level),labels=['사업명','지원항목','세부과업','진행단계'],siblingIndex=parent?parent.children.findIndex(x=>x.id===n.id):-1,editable=teamCanEdit(n,level),canAdd=teamCanAdd(n,level);$('#inspectorBody').innerHTML=`<div class="eyebrow">ITEM INSPECTOR</div><h2>${labels[Math.min(level,3)]} ${editable?'편집':'조회'}</h2><p class="inspector-hint">${editable?'사업 및 과업 구조를 변경하거나 완료 상태를 관리합니다.':'상위 구조는 팀장·관리자만 수정할 수 있습니다. 배정된 수행과업 아래에 하위 과업을 추가해 주세요.'}</p><fieldset class="inspector-edit-scope" ${editable?'':'disabled'}><label class="field"><span>이름</span><input id="editName" maxlength="130" value="${esc(n.title)}"></label>${level===0?`<label class="field"><span>기업명 / 발주처</span><input id="editCompany" maxlength="100" value="${esc(n.client||'')}"></label>${projectInfoEditor(n)}`:''}<label class="field"><span>메모 / 수행내용</span><textarea id="editNote" placeholder="진행내용 및 필요한 사항">${esc(n.note||'')}</textarea></label>${level>=2?assigneeEditor(n):''}${inspectorStatusPanel(n,level,st)}${s.total?`<div class="note-box">진행단계 완료: <strong>${s.done} / ${s.total} (${rate(n,level)}%)</strong></div>`:''}<button class="btn primary" id="saveNode" style="width:100%;margin-top:15px">변경사항 저장</button></fieldset>${team.active&&level===1?teamAssignmentsEditor(n):''}${team.active?teamAuditPanel(n.id):''}<hr><div class="field"><span>구조 편집</span><p class="inspector-section-hint">하위 항목을 추가하거나 같은 단계 안에서 표시 순서를 바꿉니다.</p><div class="inspector-actions">${canAdd?`<button class="btn verylight" data-add="${esc(n.id)}">＋ 하위 단계 추가</button>`:''}${editable&&parent?`<button class="btn" data-move="-1" ${siblingIndex===0?'disabled':''}>↑ 위로 이동</button><button class="btn" data-move="1" ${siblingIndex===parent.children.length-1?'disabled':''}>↓ 아래로 이동</button>`:''}${level===2?`<button class="btn" data-focus="${esc(n.id)}">실행단계 보기 →</button>`:''}</div></div><div class="actions"><button class="btn" id="closeInspector">✕ 패널 닫기</button></div>${editable?`<div class="inspector-danger"><button class="btn danger" data-remove="${esc(n.id)}">${level===0?'사업 전체 삭제':'이 항목 삭제'}</button></div>`:''}<hr><p class="help">항목 이름과 메모는 ‘변경사항 저장’으로 저장됩니다. 완료 상태는 즉시 저장됩니다.<br>하위 항목의 완료 표시만으로 상위 단계가 자동 완료되지 않습니다. 상위 단계의 최종 완료를 직접 표시해 주세요.<br>${team.active?'모든 변경은 회사 공동 작업공간에 저장되어 참여자 화면에 자동으로 반영됩니다.':'모든 변경은 이 브라우저에 먼저 저장되며, 클라우드 연결 후 동기화됩니다.'}</p>`}
 function renderAdmin(){
  const a=aggregate(),signed=!!session?.user?.id,connected=cloudReady&&signed;
  const status=team.active?'회사 공동 작업공간 · 자동 동기화 활성':connected?'연결됨 · 자동 동기화 활성':signed?'로그인됨 · 동기화 확인 필요':'로그인 필요';
@@ -1112,31 +1134,87 @@ function teamAssignmentsEditor(n){
  }).join('')}</div>`;
 }
 function renderTeamAdmin(){
- if(!session?.user?.id)return '<section class="admin-card"><h3>회사 공동 작업</h3><p>먼저 로그인하면 팀 작업공간을 생성하거나 초대코드로 참여할 수 있습니다.</p></section>';
- if(!team.active)return `<section class="admin-card team-admin-card team-onboarding"><div class="team-onboard-top"><div><span class="team-onboard-step">처음 한 번만 설정</span><h3>회사 작업공간 최초 개설</h3><p>관리자로 사용할 계정으로 로그인한 상태에서 회사 작업공간을 한 번만 만드세요. 만드는 계정에 <b>최고관리자 권한</b>이 자동 부여됩니다.</p></div></div>
- <div class="team-current-user"><span>현재 로그인 계정</span><strong>${esc(session.user.email||'이메일 확인 필요')}</strong><small>이 계정이 회사 작업공간의 최고관리자가 됩니다. GitHub 아이디와는 별개의 계정입니다.</small></div>
- <div class="team-onboard-setup"><strong>시작 전 확인</strong><p>Supabase에서 회사 공동 작업 SQL을 한 번 실행해야 합니다. 기존 사업 데이터는 지우지 않습니다.</p><a href="https://github.com/kiesi10041-jpg/TaskFlow/blob/main/supabase_team_v3.sql" target="_blank" rel="noopener noreferrer">① 설치할 Supabase SQL 열기</a> <span>→</span> <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer">② Supabase SQL Editor 열기</a></div>
- <div class="field"><span>직원에게 표시할 이름 (선택)</span><input id="teamMyName" maxlength="80" placeholder="예: 심훈"></div>
- <div class="field"><span>회사 / 공동 작업공간 이름</span><input id="teamWorkspaceName" maxlength="150" placeholder="예: 한국온라인창업컨설팅"></div>
- <div class="team-setup-controls"><button class="btn" id="teamCheckSetup" type="button">Supabase 설치 상태 확인</button><span>아직 SQL을 실행하지 않았다면 먼저 설치해 주세요.</span></div><div class="team-setup-feedback hidden" id="teamSetupError" role="alert" aria-live="polite"></div><button class="btn primary team-create-primary" id="teamCreate" type="button">이 계정을 최고관리자로 설정하고 회사 작업공간 만들기</button>
- <p class="team-help">개설 후 기존 사업 가져오기 → 직원 초대 → 수행과업 담당자 배정 순서로 진행합니다.</p>
- <details class="team-join-expander"><summary>이미 회사 작업공간이 있나요? 직원 초대로 참여하기</summary>
-  <p>팀장 또는 관리자가 보내준 초대 링크가 있다면 링크를 사용하세요. 초대코드를 받은 경우 아래에 입력합니다.</p>
-  <div class="field"><span>초대코드</span><input id="teamInviteCode" placeholder="팀장에게 받은 초대코드"></div>
-  <button class="btn" id="teamJoin" type="button">직원으로 참여하기</button>
- </details></section>`;
- return `<section class="admin-card team-admin-card"><h3>회사 공동 작업공간</h3>
- <div class="admin-row"><span class="admin-k">회사 / 팀</span><strong>${esc(team.workspace.name)}</strong></div>
- <div class="admin-row"><span class="admin-k">내 권한</span><strong>${{admin:'최고관리자',lead:'팀장 / PM',member:'참여 팀원'}[team.role]||team.role}</strong></div>
- <div class="admin-row"><span class="admin-k">구성원</span><strong>${team.members.length}명</strong></div>
- ${teamIsManager()?`<hr><h3>직원 초대</h3><p>직원에게 코드를 전달하면 개인 계정으로 회사 작업공간에 참여할 수 있습니다.</p>
- <div class="field"><span>초대 권한</span><select id="teamInviteRole"><option value="member">팀원</option>${team.role==='admin'?'<option value="lead">팀장 / PM</option>':''}</select></div>
- <button class="btn" id="teamIssueInvite">초대코드 발급</button>
- <div class="field" style="margin-top:10px"><span>발급된 코드</span><input id="teamIssuedCode" placeholder="발급 후 표시" readonly></div>
- <button class="btn verylight" id="teamCopyCode">코드 복사</button><div class="field"><span>간편 초대 링크 (접속 시 연결정보 자동 설정)</span><input id="teamIssuedLink" readonly placeholder="초대 링크 발급 후 표시"></div><button class="btn" id="teamCopyLink">초대 링크 복사</button>`:''}
- <hr><h3>참여자 목록</h3>${team.members.map(m=>`<div class="admin-row"><span class="admin-k">${esc(m.display_name||m.email||'이름 미설정')}</span><strong>${m.role==='admin'?'관리자':m.role==='lead'?'팀장':'팀원'}</strong></div>`).join('')}
- ${teamIsManager()?`<hr><h3>기존 사업 가져오기</h3><p>기존 개인 계정의 사업을 공동 작업공간으로 복사합니다. 원본 개인 자료는 삭제하지 않습니다.</p><button class="btn" id="teamImport">↓ 기존 사업 공동 공간에 복사</button>`:''}
- <div class="admin-actions" style="margin-top:15px"><button class="btn verylight" id="teamReload">↻ 공동 데이터 다시 불러오기</button></div>
+ if(!session?.user?.id)return `<section class="admin-card team-admin-card"><h3>내 계정과 회사 공동 작업</h3><p>먼저 계정·클라우드 설정에서 개인 이메일로 로그인해 주세요.</p></section>`;
+ if(!team.active){
+  const founder=teamCanBootstrap(),pending=localStorage.getItem(TEAM_INVITE_PENDING_KEY)||'';
+  const identity=`<div class="team-current-user"><span>현재 로그인 계정</span><strong>${esc(session.user.email||'이메일 미확인')}</strong><small>${founder?'회사 최초 개설 계정으로 지정되어 있습니다.':'직원은 관리자 또는 팀장의 초대를 받아 회사 공간에 참여합니다.'}</small></div>`;
+  const profile=`<div class="team-onboard-profile"><h3>직원 정보 등록</h3><p>각 과업에서 누가 작성하고 수정했는지 구분하기 위해 이름·소속팀·직급을 기록합니다.</p><div class="team-profile-grid">
+   <label class="field"><span>직원 이름</span><input id="teamMyName" maxlength="80" placeholder="예: 홍길동" autocomplete="name"></label>
+   <label class="field"><span>소속팀</span><input id="teamMyDepartment" maxlength="80" placeholder="예: 마케팅팀"></label>
+   <label class="field"><span>직급 / 직책</span><input id="teamMyTitle" maxlength="80" placeholder="예: 팀장, 대리, 주임"></label>
+   </div></div>`;
+  if(!founder)return `<section class="admin-card team-admin-card team-onboarding">
+    <span class="team-onboard-step">직원 계정</span><h3>회사 작업공간 참여</h3>
+    <p>개인 계정으로 로그인되었습니다. 회사 공동 작업공간을 새로 만드는 대신, 팀장에게 받은 초대코드로 참여합니다.</p>
+    ${identity}${profile}
+    <label class="field"><span>초대코드</span><input id="teamInviteCode" value="${esc(pending)}" placeholder="팀장에게 받은 초대코드"></label>
+    <button class="btn primary" type="button" id="teamJoin">회사 작업공간에 참여하기</button>
+    <p class="team-help">참여 후 관리자가 담당 수행과업을 배정하면 세부과업과 실행단계를 직접 추가할 수 있습니다.</p>
+  </section>`;
+  return `<section class="admin-card team-admin-card team-onboarding">
+    <span class="team-onboard-step">최초 개설 관리자 · 지정 계정</span><h3>회사 작업공간 최초 개설</h3>
+    <p>기존 사업 자료를 유지하면서 직원 공동 작업공간을 처음 한 번 개설합니다. 이 계정이 최고관리자가 됩니다.</p>
+    ${identity}
+    <div class="team-onboard-setup"><strong>먼저 Supabase 권한 SQL을 적용해 주세요.</strong>
+    <p>기존에 3.0 공동 작업 SQL을 실행했다면, 아래 3.1 권한 확장 SQL을 추가로 실행해야 합니다. 이미 작성된 사업 데이터는 삭제하지 않습니다.</p>
+    <a href="https://github.com/kiesi10041-jpg/TaskFlow/blob/main/supabase_team_v3.sql" target="_blank" rel="noopener noreferrer">기본 SQL (3.0)</a>
+    <span>→</span>
+    <a href="https://github.com/kiesi10041-jpg/TaskFlow/blob/main/supabase_team_v3_1.sql" target="_blank" rel="noopener noreferrer">관리자·직원정보 확장 SQL (3.1)</a></div>
+    ${profile}
+    <label class="field"><span>회사 / 공동 작업공간 이름</span><input id="teamWorkspaceName" maxlength="150" placeholder="예: 한국온라인창업컨설팅"></label>
+    <div class="team-setup-controls"><button class="btn" id="teamCheckSetup" type="button">Supabase 설치 상태 확인</button><span>설치가 확인된 후 회사 작업공간을 개설할 수 있습니다.</span></div>
+    <div class="team-setup-feedback hidden" id="teamSetupError" role="alert" aria-live="polite"></div>
+    <button class="btn primary team-create-primary" id="teamCreate" type="button">이 계정으로 회사 작업공간 개설</button>
+    <p class="team-help">개설 후 기존 사업 가져오기 → 직원 초대 → 수행과업 배정 순서입니다.</p>
+    ${pending?`<details class="team-join-expander"><summary>이미 받은 직원 초대코드 사용하기</summary>
+      <label class="field"><span>초대코드</span><input id="teamInviteCode" value="${esc(pending)}"></label>
+      <button class="btn" id="teamJoin" type="button">직원으로 참여하기</button></details>`:''}
+  </section>`;
+ }
+ const me=team.members.find(m=>m.user_id===session.user.id)||{};
+ const roleLabel={admin:'최고관리자',lead:'팀장 / PM',member:'참여 팀원'};
+ const transferFrom=team.handovers.find(h=>h.status==='pending'&&h.from_user===session.user.id);
+ const transferTo=team.handovers.find(h=>h.status==='pending'&&h.to_user===session.user.id);
+ const others=team.members.filter(x=>x.user_id!==session.user.id);
+ const profile=`<div class="team-profile-edit"><h3>내 직원정보</h3><p>팀과 직급은 본인이 수정할 수 있습니다. 새로 만든 과업의 생성자 기록에는 현재 등록된 정보가 표시됩니다.</p><div class="team-profile-grid">
+  <label class="field"><span>이름</span><input id="teamProfileName" maxlength="80" value="${esc(me.display_name||'')}" placeholder="직원 이름"></label>
+  <label class="field"><span>소속팀</span><input id="teamProfileDepartment" maxlength="80" value="${esc(me.department||'')}" placeholder="예: 마케팅팀"></label>
+  <label class="field"><span>직급 / 직책</span><input id="teamProfileTitle" maxlength="80" value="${esc(me.job_title||'')}" placeholder="예: 팀장"></label></div>
+  <button class="btn" id="teamSaveProfile" type="button">내 직원정보 저장</button></div>`;
+ const invite=teamIsManager()?`<hr><h3>직원 초대</h3><p>직원은 각자 이메일로 로그인하며 초대 후 수행과업 담당자를 지정할 수 있습니다.</p>
+   <div class="field"><span>초대 권한</span><select id="teamInviteRole"><option value="member">참여 팀원</option>${team.role==='admin'?'<option value="lead">팀장 / PM</option>':''}</select></div>
+   <button class="btn" id="teamIssueInvite" type="button">초대코드 발급</button>
+   <div class="field"><span>초대코드</span><input id="teamIssuedCode" readonly placeholder="발급 후 표시"></div>
+   <button class="btn verylight" id="teamCopyCode" type="button">코드 복사</button>
+   <div class="field"><span>간편 초대 링크</span><input id="teamIssuedLink" readonly placeholder="발급 후 표시"></div>
+   <button class="btn" id="teamCopyLink" type="button">초대 링크 복사</button>`:'';
+ let transfer='';
+ if(transferFrom&&team.role==='admin'){
+  transfer=`<section class="team-transfer-panel"><h3>관리자 인계 요청 대기</h3><p><strong>${esc(teamMemberName(transferFrom.to_user))}</strong>에게 최고관리자 인계를 요청했습니다. 인계자가 수락하기 전에는 기존 권한이 유지됩니다.</p>
+  <button class="btn" type="button" data-team-cancel-transfer="${esc(transferFrom.id)}">인계 요청 취소</button></section>`;
+ }else if(team.role==='admin'&&team.handoverReady){
+  transfer=`<section class="team-transfer-panel"><h3>최고관리자 권한 인계</h3><p>인계할 직원 한 명을 지정합니다. <strong>지정한 인계자만 수락 요청을 볼 수 있습니다.</strong> 인수 완료 시 기존 관리자 계정은 일반 팀원으로 전환됩니다.</p>
+   <label class="field"><span>관리자 인수자</span><select id="teamSuccessor"><option value="">직원을 선택하세요</option>${others.map(m=>`<option value="${esc(m.user_id)}">${esc(teamMemberName(m.user_id))}</option>`).join('')}</select></label>
+   <button class="btn" id="teamProposeHandover" type="button" ${others.length?'':'disabled'}>관리자 인계 요청</button></section>`;
+ }else if(team.role==='admin'&&!team.handoverReady){
+  transfer='<section class="team-transfer-panel"><h3>최고관리자 권한 인계</h3><p>관리자 인계 기능을 사용하려면 Supabase 3.1 확장 SQL을 적용해야 합니다.</p></section>';
+ }
+ if(transferTo){
+  transfer+=`<section class="team-transfer-panel received"><h3>내게 도착한 관리자 인계 요청</h3><p><strong>${esc(teamMemberName(transferTo.from_user))}</strong> 관리자가 최고관리자 권한을 인계하도록 지정했습니다. 이 요청은 인계자 본인에게만 보입니다.</p><button class="btn primary" data-team-accept-transfer="${esc(transferTo.id)}" type="button">최고관리자 인수 수락</button></section>`;
+ }
+ return `<section class="admin-card team-admin-card"><div class="team-workspace-heading"><h3>회사 공동 작업공간</h3><span>${esc(roleLabel[team.role]||team.role)}</span></div>
+   <div class="admin-row"><span class="admin-k">회사명</span><strong>${esc(team.workspace.name)}</strong></div>
+   <div class="admin-row"><span class="admin-k">내 계정</span><strong>${esc(session.user.email||'')}</strong></div>
+   <div class="admin-row"><span class="admin-k">참여 직원</span><strong>${team.members.length}명</strong></div>
+   ${profile}
+   <hr><h3>직원 명부</h3><div class="team-staff-list">
+   <div class="team-staff-row heading"><span>이름</span><span>소속팀</span><span>직급</span><span>권한</span></div>
+   ${team.members.map(m=>`<div class="team-staff-row"><span><b>${esc(m.display_name||'미입력')}</b><small>${esc(m.email||'')}</small></span><span>${esc(m.department||'미입력')}</span><span>${esc(m.job_title||'미입력')}</span><span>${esc(roleLabel[m.role]||m.role)}</span></div>`).join('')}
+   </div>
+   ${invite}
+   ${transfer}
+   ${teamIsManager()?`<hr><h3>기존 사업 가져오기</h3><p>개인 계정에 저장된 기존 사업을 회사 공간으로 복사합니다. 개인 원본은 유지됩니다.</p><button class="btn" id="teamImport">기존 사업 공동 공간에 복사</button>`:''}
+   <div class="admin-actions" style="margin-top:18px"><button class="btn verylight" id="teamReload">↻ 공동 자료 다시 불러오기</button></div>
  </section>`;
 }
 async function teamImportLegacy(){
@@ -1212,6 +1290,10 @@ function handleGlobalClick(e){const target=e.target;
  if(target.closest('#backupBtn')){download();return}
  if(target.closest('#restoreBtn')){$('#importFile').click();return}
  if(target.closest('#cloudBtn')){openCloud();return}
+ if(target.closest('#teamSaveProfile')){cloudAction(teamSaveMyProfile);return}
+ if(target.closest('#teamProposeHandover')){cloudAction(teamRequestHandover);return}
+ if(target.closest('[data-team-accept-transfer]')){cloudAction(()=>teamAcceptHandover(target.closest('[data-team-accept-transfer]').dataset.teamAcceptTransfer));return}
+ if(target.closest('[data-team-cancel-transfer]')){cloudAction(()=>teamCancelHandover(target.closest('[data-team-cancel-transfer]').dataset.teamCancelTransfer));return}
  if(target.closest('#teamCheckSetup')){cloudAction(teamCheckSetup,false);return}
  if(target.closest('#teamCreate')){cloudAction(teamCreateWorkspace);return}
  if(target.closest('#teamJoin')){cloudAction(teamJoinWorkspace);return}
