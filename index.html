@@ -1026,6 +1026,8 @@ async function teamCreateWorkspace(){
  if(!teamCanBootstrap())throw Error('회사 최초 개설은 지정된 최고관리자 계정에서만 가능합니다. 직원은 초대코드로 참여하세요.');
  const name=$('#teamWorkspaceName')?.value.trim();
  if(!name)throw Error('회사 또는 팀 이름을 입력해 주세요.');
+ const personName=$('#teamMyName')?.value.trim()||'',department=$('#teamMyDepartment')?.value.trim()||'',jobTitle=$('#teamMyTitle')?.value.trim()||'';
+ if(!personName||!department||!jobTitle)throw Error('직원 이름, 소속팀, 직급을 모두 입력해 주세요.');
  await teamCheckSetup();
  // A previous request may have created the workspace before a later profile/sync step failed.
  // Reuse it instead of accidentally creating a second company workspace.
@@ -1041,7 +1043,7 @@ async function teamCreateWorkspace(){
   {name,created_by:session.user.id},{'Prefer':'return=representation'});
  if(!Array.isArray(result)||!result.length)throw Error('작업공간 생성 응답이 없습니다.');
  try{
-  await teamWriteProfile($('#teamMyName')?.value.trim()||'',$('#teamMyDepartment')?.value.trim()||'',$('#teamMyTitle')?.value.trim()||'');
+  await teamWriteProfile(personName,department,jobTitle);
   await teamActivate();
  }catch(e){throw Error('회사 작업공간은 생성되었지만 계정 연결 확인에서 실패했습니다. 중복 생성하지 말고 새로고침한 뒤 관리자 설정을 확인해 주세요. 원인: '+e.message)}
  if(!team.active||team.role!=='admin')throw Error('회사 공간이 생성되었지만 최고관리자 권한 확인에 실패했습니다. 중복 생성하지 말고 새로고침 후 확인해 주세요.');notify('회사 작업공간 개설 완료 · 이 계정이 최고관리자로 등록됐습니다.');
