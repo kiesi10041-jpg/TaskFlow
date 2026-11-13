@@ -953,8 +953,11 @@ async function teamAssignCategory(categoryId,userId){
  if(!teamIsManager())throw Error('팀장 또는 관리자만 배정할 수 있습니다.');
  const active=team.categoryMembers.some(x=>x.category_id===categoryId&&x.user_id===userId);
  const path='/rest/v1/taskflow_category_members';
- if(active)await cloudRequest(path+'?category_id=eq.'+encodeURIComponent(categoryId)+'&user_id=eq.'+encodeURIComponent(userId),'DELETE');
- else await cloudRequest(path,'POST',{project_id:currentProjectId,category_id:categoryId,user_id:userId});
+ if(active){
+  await cloudRequest(path+'?category_id=eq.'+encodeURIComponent(categoryId)+'&user_id=eq.'+encodeURIComponent(userId),'DELETE');
+  const otherScopes=team.categoryMembers.some(a=>a.project_id===currentProjectId&&a.user_id===userId&&a.category_id!==categoryId);
+  if(!otherScopes)await cloudRequest('/rest/v1/taskflow_project_members?project_id=eq.'+encodeURIComponent(currentProjectId)+'&user_id=eq.'+encodeURIComponent(userId),'DELETE');
+ }else await cloudRequest(path,'POST',{project_id:currentProjectId,category_id:categoryId,user_id:userId});
  await teamLoadMembers();renderInspector();notify(active?'수행과업 배정을 해제했습니다.':'팀원에게 수행과업을 배정했습니다.');
 }
 function teamAssignmentsEditor(n){
