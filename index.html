@@ -997,7 +997,7 @@ function teamFriendlyError(err){
  if(/PGRST20[0456]|42P01|relation .*does not exist|could not find the table|schema cache|does not exist|not found/i.test(code+' '+msg))
   return '공동 작업용 데이터베이스가 설치되지 않았거나 인식되지 않습니다. 기본 SQL(3.0)과 관리자·직원정보 확장 SQL(3.1)을 순서대로 실행한 뒤 다시 시도해 주세요. (원인: '+msg+')';
  if(/new row violates row.level security policy for table ["']?taskflow_workspaces|row.level security.*taskflow_workspaces/i.test(code+' '+msg))
-  return '최초 관리자 계정 생성 정책이 요청을 거부했습니다. 기존 Supabase 프로젝트에서 3.2 권한 수정 SQL을 실행한 뒤 다시 확인해 주세요. (원인: '+msg+')';
+  return '회사 작업공간 생성 중 Supabase 권한 검사가 거부되었습니다. 페이지를 새로고침한 뒤 기존 공간이 생성됐는지 먼저 확인하고, 계속 실패한다면 SQL Editor에서 관리자 계정과 정책 상태를 점검해야 합니다. (원인: '+msg+')';
  if(/42501|permission denied|row.level.security|violates row-level|RLS|not authorized/i.test(code+' '+msg)||stat===403)
   return 'Supabase 접근 권한이 거부되었습니다. SQL 실행 여부와 현재 로그인 계정을 확인해 주세요. (원인: '+msg+')';
  if(stat===401||/invalid jwt|jwt expired|token expired|session expired/i.test(code+' '+msg))
@@ -1030,7 +1030,7 @@ async function teamCheckSetup(){
   const permitted=await cloudRequest('/rest/v1/rpc/tf_can_open_company','POST',{});
   if(permitted!==true)throw new Error('관리자 개설 권한 검사 결과가 거부되었습니다. Supabase 3.2 권한 수정 SQL을 실행하고 다시 확인해 주세요.');
  }
- teamSetupNotice('연결 확인 완료 · 관리자 계정의 회사 작업공간 생성 권한까지 확인했습니다.','success');
+ teamSetupNotice('관리자 계정과 설치 상태 확인 완료 · 이제 회사 작업공간을 개설할 수 있습니다.','success');
 }
 async function teamCreateWorkspace(){
  if(!session?.user?.id)throw Error('먼저 로그인하세요.');
@@ -1050,9 +1050,12 @@ async function teamCreateWorkspace(){
  }
  await teamCheckSetup();
  teamSetupNotice('회사 작업공간을 생성하는 중입니다.','checking');
- const result=await cloudRequest('/rest/v1/taskflow_workspaces?select=id,name','POST',
-  {name,created_by:session.user.id},{'Prefer':'return=representation'});
- if(!Array.isArray(result)||!result.length)throw Error('작업공간 생성 응답이 없습니다.');
+ // A workspace membership is created by an AFTER INSERT trigger.
+ // Asking PostgREST to INSERT ... RETURNING causes SELECT RLS to run
+ // before the new membership is visible. Use a minimal insert instead,
+ // then query membership in a separate request after commit.
+ await cloudRequest('/rest/v1/taskflow_workspaces','POST',
+  {name,created_by:session.user.id},{'Prefer':'return=minimal'});
  try{
   await teamWriteProfile(personName,department,jobTitle);
   await teamActivate();
