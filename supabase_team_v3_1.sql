@@ -9,8 +9,10 @@ alter table public.taskflow_profiles
 alter table public.taskflow_profiles
   add column if not exists job_title text not null default '';
 
--- Admin bootstrap is limited to the agreed founding account. SQL/RLS,
--- not hidden buttons, enforce this. A successor is made admin by handover RPC.
+-- Admin bootstrap is limited to the unique authenticated Supabase user owning
+-- the agreed founding email. Do NOT require auth.users.email_confirmed_at:
+-- some projects permit authenticated sign-in without email confirmation.
+-- SQL/RLS, not hidden buttons, enforce this. A successor uses the handover RPC.
 create or replace function public.tf_can_open_company()
 returns boolean language sql stable security definer set search_path = ''
 as $$
@@ -18,7 +20,6 @@ as $$
    select 1 from auth.users u
    where u.id = (select auth.uid())
      and lower(u.email) = 'zotozo12@naver.com'
-     and u.email_confirmed_at is not null
  ) and not exists (
    select 1 from public.taskflow_workspaces w
    where w.created_by=(select auth.uid())
