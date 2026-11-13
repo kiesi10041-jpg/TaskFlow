@@ -876,7 +876,7 @@ async function teamLoadMembers(){
 }
 async function teamRefresh(force=false){
  if(!team.active||team.busy||team.dirty&&!force)return;
- if(!force&&document.activeElement?.closest?.('#inspectorBody,#entryForm,#duplicateForm,#cloudBackdrop'))return;
+ if(!force&&document.activeElement?.closest?.('#inspectorBody,#entryForm,#duplicateForm,#cloudBackdrop,.team-admin-card'))return;
  await teamLoadMembers();
  const rows=await teamFetchRows();
  if(team.dirty&&!force)return;
