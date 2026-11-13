@@ -704,7 +704,7 @@ function persistSession(next){
  }
 }
 function clearSavedSession(){
- if(team.active){localStorage.removeItem(teamCacheKey());teamStop();projects=[];currentProjectId=null;selectedId=null;focusId=null;view='dashboard'}
+ if(team.active){teamStop();projects=[];currentProjectId=null;selectedId=null;focusId=null;view='dashboard'}
  session=null;cloudReady=false;clearTimeout(cloudTimer);
  localStorage.removeItem(SESSION_KEY);sessionStorage.removeItem(SESSION_KEY);
 }
@@ -814,6 +814,44 @@ function teamCanAdd(n,level){
 }
 function teamCanCreateProject(){return !teamAwaitingConnection()&&(!team.active||teamIsManager())}
 function teamCacheKey(){return 'taskflow-v3-workspace-'+(session?.user?.id||'guest')+'-'+(team.workspace?.id||'none')}
+function teamDraftKey(){return 'taskflow-v3-pending-'+(session?.user?.id||'guest')+'-'+(team.workspace?.id||'none')}
+function teamRecoveryKey(){return 'taskflow-v3-recovery-'+(session?.user?.id||'guest')+'-'+(team.workspace?.id||'none')}
+function teamReadPendingDraft(){
+ try{
+  const data=JSON.parse(localStorage.getItem(teamDraftKey())||'null');
+  if(!data||!Array.isArray(data.projects)||!Array.isArray(data.base))return null;
+  return data;
+ }catch(e){return null}
+}
+function teamWritePendingDraft(){
+ if(!team.active)return;
+ const data={savedAt:new Date().toISOString(),projects,base:[...team.base.values()]};
+ localStorage.setItem(teamCacheKey(),JSON.stringify(projects));
+ localStorage.setItem(teamDraftKey(),JSON.stringify(data));
+}
+function teamStoreRecoverySnapshot(snapshot,reason=''){
+ try{
+  if(!Array.isArray(snapshot)||!snapshot.length)return false;
+  if(!localStorage.getItem(teamRecoveryKey())){
+   localStorage.setItem(teamRecoveryKey(),JSON.stringify({
+    savedAt:new Date().toISOString(),reason,projects:snapshot
+   }));
+  }
+  return true;
+ }catch(e){return false}
+}
+function teamDownloadRecovery(){
+ const current=teamReadPendingDraft();
+ const recovery=(()=>{try{return JSON.parse(localStorage.getItem(teamRecoveryKey())||'null')}catch(e){return null}})();
+ const data=current?.projects?.length?current:recovery;
+ if(!Array.isArray(data?.projects))throw Error('별도 보관된 복구용 작업본이 없습니다.');
+ const payload={app:'TaskFlow',version:3,exportedAt:new Date().toISOString(),kind:'local-recovery',projects:data.projects};
+ const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});
+ const link=document.createElement('a'),url=URL.createObjectURL(blob);
+ link.href=url;link.download='TaskFlow_미동기화_작업본_'+today()+'.json';
+ document.body.appendChild(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
 function teamFlatten(nodes){
  const out=new Map();
  const walk=(n,projectId,parentId,depth,position,category)=>{
@@ -915,7 +953,25 @@ async function teamActivate(){
  team.active=true;team.workspace=ws[0];team.role=membership.role;
  localStorage.setItem('taskflow-v3-last-team',JSON.stringify({userId:session.user.id,workspaceId:team.workspace.id}));
  await teamLoadMembers();
- await teamRefresh(true);
+ const pending=teamReadPendingDraft();
+ if(pending){
+  // Only the authenticated owner of this workspace can open the account-scoped local draft.
+  team.base=new Map(pending.base.filter(x=>x?.id).map(row=>[row.id,row]));
+  projects=pending.projects.map(p=>normalizeNode(p));
+  team.dirty=true;team.loaded=true;team.seq=1;
+  currentProjectId=projects[0]?.id||null;selectedId=currentProjectId;focusId=null;view='dashboard';
+  cloudReady=false;
+  render();
+  notify('이 기기에 남아 있던 미동기화 작업본을 복구했습니다. 관리자 설정에서 JSON 백업 후 저장해 주세요.');
+ }else{
+  let oldCache=null;
+  try{oldCache=JSON.parse(localStorage.getItem(teamCacheKey())||'null')}catch(e){}
+  await teamRefresh(true);
+  if(Array.isArray(oldCache)&&oldCache.length&&teamStableJSON(oldCache)!==teamStableJSON(projects)){
+   teamStoreRecoverySnapshot(oldCache,'클라우드 갱신 전 보관된 작업본');
+   notify('이 기기의 이전 작업본을 별도로 보관했습니다. 관리자 설정에서 다운로드할 수 있습니다.');
+  }
+ }
  if(team.poll)clearInterval(team.poll);
  team.poll=setInterval(()=>{
   if(team.active&&!team.busy&&!team.dirty&&document.visibilityState!=='hidden')teamRefresh().catch(e=>console.warn('TaskFlow team refresh',e));
@@ -925,7 +981,11 @@ async function teamActivate(){
 function teamQueueSave(){
  if(!team.active)return;
  team.seq++;team.dirty=true;
- localStorage.setItem(teamCacheKey(),JSON.stringify(projects));
+ try{teamWritePendingDraft()}
+ catch(err){
+  console.warn('Unable to save local TaskFlow recovery draft:',err);
+  notify('기기 임시 저장 공간이 부족합니다. 관리자 설정에서 JSON 백업을 내려받아 주세요.');
+ }
  $('#saveLabel').textContent='공동 작업공간에 저장 대기 중';
  if(team.timer)clearTimeout(team.timer);
  team.timer=setTimeout(()=>teamFlush().catch(e=>{
@@ -982,6 +1042,7 @@ async function teamFlush(){
   team.audit=new Map(latest.map(row=>[row.id,{created_by:row.created_by,updated_by:row.updated_by,created_at:row.created_at,updated_at:row.updated_at}]));
   if(team.seq===startSeq){
    team.dirty=false;
+   localStorage.removeItem(teamDraftKey());
    projects=teamBuildProjects(latest);
    localStorage.setItem(teamCacheKey(),JSON.stringify(projects));
    cloudReady=true;
@@ -1248,6 +1309,7 @@ function renderTeamAdmin(){
    </div>
    ${invite}
    ${transfer}
+   ${localStorage.getItem(teamDraftKey())||localStorage.getItem(teamRecoveryKey())?`<div class="team-local-recovery"><h3>이 기기에 남은 작업본 보호</h3><p>클라우드 인증 오류나 동기화 충돌이 발생했을 때 저장된 작업본입니다. 다른 팀원의 자료를 덮어쓰지 않도록 자동 복원하지 않으며, JSON으로 내려받아 보관할 수 있습니다.</p><button class="btn" id="teamRecoveryDownload" type="button">↓ 이 기기의 작업본 백업</button>${team.dirty?'<p><b>아직 클라우드에 전송되지 않은 변경이 있습니다.</b> 위쪽의 변경사항 저장을 실행하기 전에 백업을 권장합니다.</p>':''}</div>`:''}
    ${teamIsManager()?`<hr><h3>기존 사업 가져오기</h3><p>개인 계정에 저장된 기존 사업을 회사 공간으로 복사합니다. 개인 원본은 유지됩니다.</p><button class="btn" id="teamImport">기존 사업 공동 공간에 복사</button>`:''}
    <div class="admin-actions" style="margin-top:18px"><button class="btn verylight" id="teamReload">↻ 공동 자료 다시 불러오기</button></div>
  </section>`;
@@ -1406,6 +1468,7 @@ function handleGlobalClick(e){const target=e.target;
  if(target.closest('#closeInspector')){setInspectorOpen(false);return}
  if(target.closest('#editInspector')){const isOpen=window.innerWidth<=970?$('#app').classList.contains('show-inspector'):!$('#app').classList.contains('inspector-closed');setInspectorOpen(!isOpen);return}
  if(target.closest('#mobileMenu')){$('#app').classList.toggle('show-side');return}
+ if(target.closest('#teamRecoveryDownload')){try{teamDownloadRecovery()}catch(e){notify(e.message)}return}
  if(target.closest('#backupBtn')){download();return}
  if(target.closest('#restoreBtn')){$('#importFile').click();return}
  if(target.closest('#cloudBtn')){openCloud();return}
@@ -1435,7 +1498,15 @@ $('#mapPrintBackdrop').addEventListener('click',e=>{if(e.target.id==='mapPrintBa
 $('#duplicateForm').addEventListener('submit',e=>{e.preventDefault();makeDuplicate()});$('#duplicateCancel').addEventListener('click',closeDuplicate);$('#duplicateBackdrop').addEventListener('click',e=>{if(e.target.id==='duplicateBackdrop')closeDuplicate()});$('#entryForm').addEventListener('submit',e=>{e.preventDefault();makeEntry()});$('#entryCancel').addEventListener('click',closeEntry);$('#entryBackdrop').addEventListener('click',e=>{if(e.target.id==='entryBackdrop')closeEntry()});
 $('#importFile').addEventListener('change',e=>{importFile(e.target.files?.[0]);e.target.value='' });
 $('#cloudClose').addEventListener('click',closeCloud);$('#cloudBackdrop').addEventListener('click',e=>{if(e.target.id==='cloudBackdrop')closeCloud()});
-$('#cloudSignup').addEventListener('click',()=>cloudAction(cloudSignup));$('#cloudResend').addEventListener('click',()=>cloudAction(cloudResend));$('#cloudRemember').addEventListener('change',e=>{localStorage.setItem(REMEMBER_KEY,e.target.checked?'1':'0');if(session?.refresh_token)persistSession(session)});$('#cloudLogin').addEventListener('click',()=>cloudAction(cloudLogin));$('#cloudLogout').addEventListener('click',()=>{clearSavedSession();updateCloudStatus('로그아웃됨 · 이 기기의 개인 및 공동 자료 캐시는 유지됩니다.');render();notify('클라우드에서 로그아웃했습니다.')});
+$('#cloudSignup').addEventListener('click',()=>cloudAction(cloudSignup));$('#cloudResend').addEventListener('click',()=>cloudAction(cloudResend));$('#cloudRemember').addEventListener('change',e=>{localStorage.setItem(REMEMBER_KEY,e.target.checked?'1':'0');if(session?.refresh_token)persistSession(session)});$('#cloudLogin').addEventListener('click',()=>cloudAction(cloudLogin));$('#cloudLogout').addEventListener('click',()=>{
+ if(team.active&&team.dirty){
+  if(!confirm('아직 클라우드에 저장되지 않은 변경내용이 있습니다. 이 기기의 임시 작업본은 유지되지만 로그아웃 전 JSON 백업을 권장합니다. 계속할까요?'))return;
+  download();
+ }
+ clearSavedSession();authNeedsRelogin=false;
+ updateCloudStatus('로그아웃됨 · 개인 및 공동 자료의 임시 작업본은 삭제하지 않았습니다.');
+ render();notify('클라우드에서 로그아웃했습니다.');
+});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeEntry();closeCloud();closeDuplicate();closeMapPrintDialog();$('#app').classList.remove('show-side','show-inspector')}if(e.ctrlKey&&e.key==='Enter'&&e.target.closest('#inspector')){e.preventDefault();saveEdit()}});
 window.addEventListener('storage',e=>{
  if(e.key===SESSION_KEY&&e.newValue&&session?.user?.id){
