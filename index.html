@@ -666,7 +666,7 @@ async function restoreCloudLogin(){
  try{
   await renewSession();
   if(!session?.user?.id)throw Error('로그인 사용자 확인이 필요합니다.');
-  if(await teamActivate()){updateCloudStatus('회사 공동 작업공간 자동 로그인 완료');return}
+  if(await teamActivate()){localStorage.removeItem(TEAM_INVITE_PENDING_KEY);updateCloudStatus('회사 공동 작업공간 자동 로그인 완료');return}if(localStorage.getItem(TEAM_INVITE_PENDING_KEY)){if(await teamJoinPendingInvite()){updateCloudStatus('초대받은 작업공간에 자동으로 참여했습니다.');return}}
   const rows=await cloudRequest('/rest/v1/taskflow_store?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=data,updated_at');
   const hasRemote=Array.isArray(rows)&&rows.length>0&&Array.isArray(rows[0]?.data?.projects);
   const remote=hasRemote?rows[0].data.projects.map(p=>normalizeNode(p)):[];
@@ -695,6 +695,31 @@ async function restoreCloudLogin(){
 }
 
 
+const TEAM_INVITE_PENDING_KEY='taskflow-v3-pending-invite';
+function teamInviteFromLink(){
+ try{
+  const args=new URLSearchParams(location.hash.replace(/^#/,''));
+  const code=args.get('tfjoin'),url=args.get('u'),key=args.get('k');
+  if(!code||!/^[0-9a-f-]{36}$/i.test(code))return false;
+  if(url&&key&&/^https:\/\/[a-z0-9.-]+\.supabase\.co\/?$/i.test(url)
+     &&(key.startsWith('sb_publishable_')||key.startsWith('eyJ'))){
+   cfg.url=url;cfg.key=key;localStorage.setItem(SETTINGS_KEY,JSON.stringify(cfg));
+  }
+  localStorage.setItem(TEAM_INVITE_PENDING_KEY,code);
+  if(typeof history!=='undefined')history.replaceState(null,'',location.pathname+location.search);
+  return true;
+ }catch(e){return false}
+}
+function teamInviteUrl(token){
+ return location.origin+location.pathname+'#'+new URLSearchParams({tfjoin:token,u:cfg.url,k:cfg.key}).toString();
+}
+async function teamJoinPendingInvite(){
+ const token=localStorage.getItem(TEAM_INVITE_PENDING_KEY);
+ if(!token||!/^[0-9a-f-]{36}$/i.test(token))return false;
+ await cloudRequest('/rest/v1/rpc/tf_accept_invite','POST',{p_token:token,p_name:''});
+ localStorage.removeItem(TEAM_INVITE_PENDING_KEY);
+ return teamActivate();
+}
 function teamAwaitingConnection(){
  if(team.active||!session?.user?.id)return false;
  try{const m=JSON.parse(localStorage.getItem('taskflow-v3-last-team')||'null');return m?.userId===session.user.id}catch(e){return false}
@@ -911,7 +936,8 @@ async function teamCreateInvite(){
  {'Prefer':'return=representation'});
  if(!Array.isArray(res)||!res[0]?.token)throw Error('초대코드 생성 실패');
  $('#teamIssuedCode').value=res[0].token;
- notify('초대코드가 생성됐습니다. 팀원에게 전달하세요.');
+ $('#teamIssuedLink').value=teamInviteUrl(res[0].token);
+ notify('초대 링크가 생성됐습니다. 팀원에게 보내 주세요.');
 }
 async function teamAssignCategory(categoryId,userId){
  if(!teamIsManager())throw Error('팀장 또는 관리자만 배정할 수 있습니다.');
@@ -932,7 +958,7 @@ function teamAssignmentsEditor(n){
 }
 function renderTeamAdmin(){
  if(!session?.user?.id)return '<section class="admin-card"><h3>회사 공동 작업</h3><p>먼저 로그인하면 팀 작업공간을 생성하거나 초대코드로 참여할 수 있습니다.</p></section>';
- if(!team.active)return `<section class="admin-card team-admin-card"><h3>회사 공동 작업공간 시작</h3><p>기존 개인 사업 자료는 그대로 두고 새로운 공동 작업공간을 만듭니다. 직원은 각자 계정으로 참여합니다.</p>
+ if(!team.active)return `<section class="admin-card team-admin-card"><h3>회사 공동 작업공간 시작</h3><p>기존 개인 사업 자료는 그대로 두고 새로운 공동 작업공간을 만듭니다. 직원은 각자 계정으로 참여합니다.<br>최초 설정 전에는 <a href="https://github.com/kiesi10041-jpg/TaskFlow/blob/main/supabase_team_v3.sql" target="_blank" rel="noopener noreferrer">Supabase 공동 작업 SQL</a>을 SQL Editor에서 한 번 실행해 주세요.</p>
  <div class="field"><span>내 이름</span><input id="teamMyName" placeholder="홍길동"></div>
  <div class="field"><span>새 작업공간 이름 (관리자용)</span><input id="teamWorkspaceName" placeholder="예: 한국온라인창업컨설팅"></div>
  <button class="btn primary" id="teamCreate">＋ 회사 작업공간 생성</button><hr>
@@ -947,7 +973,7 @@ function renderTeamAdmin(){
  <div class="field"><span>초대 권한</span><select id="teamInviteRole"><option value="member">팀원</option>${team.role==='admin'?'<option value="lead">팀장 / PM</option>':''}</select></div>
  <button class="btn" id="teamIssueInvite">초대코드 발급</button>
  <div class="field" style="margin-top:10px"><span>발급된 코드</span><input id="teamIssuedCode" placeholder="발급 후 표시" readonly></div>
- <button class="btn verylight" id="teamCopyCode">코드 복사</button>`:''}
+ <button class="btn verylight" id="teamCopyCode">코드 복사</button><div class="field"><span>간편 초대 링크 (접속 시 연결정보 자동 설정)</span><input id="teamIssuedLink" readonly placeholder="초대 링크 발급 후 표시"></div><button class="btn" id="teamCopyLink">초대 링크 복사</button>`:''}
  <hr><h3>참여자 목록</h3>${team.members.map(m=>`<div class="admin-row"><span class="admin-k">${esc(m.display_name||m.email||'이름 미설정')}</span><strong>${m.role==='admin'?'관리자':m.role==='lead'?'팀장':'팀원'}</strong></div>`).join('')}
  ${teamIsManager()?`<hr><h3>기존 사업 가져오기</h3><p>기존 개인 계정의 사업을 공동 작업공간으로 복사합니다. 원본 개인 자료는 삭제하지 않습니다.</p><button class="btn" id="teamImport">↓ 기존 사업 공동 공간에 복사</button>`:''}
  <div class="admin-actions" style="margin-top:15px"><button class="btn verylight" id="teamReload">↻ 공동 데이터 다시 불러오기</button></div>
@@ -985,7 +1011,7 @@ function openCloud(){$('#cloudUrl').value=cfg.url||'';$('#cloudKey').value=cfg.k
 function closeCloud(){$('#cloudBackdrop').classList.add('hidden')}
 async function cloudSignup(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/signup','POST',{email,password});if(r.access_token){localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');persistSession(r)}updateCloudStatus('계정을 등록했습니다. 이메일 인증이 필요할 수 있습니다. 인증 후 로그인해 주세요.')}
 async function cloudResend(){storeConfig();const email=$('#cloudEmail').value.trim();if(!email)throw Error('가입할 때 사용한 이메일을 입력해주세요.');await cloudRequest('/auth/v1/resend','POST',{type:'signup',email});updateCloudStatus('인증 메일 재발송을 요청했습니다. 새로 도착한 메일을 열어 인증한 뒤 로그인하세요. 메일이 없으면 스팸함도 확인하세요.')}
-async function cloudLogin(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/token?grant_type=password','POST',{email,password});if(!r.access_token||!r.user?.id)throw Error('로그인 응답을 확인할 수 없습니다.');localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');persistSession(r);updateCloudStatus(`로그인 완료: ${r.user.email} · 클라우드 데이터 확인 중`);if(await teamActivate()){updateCloudStatus('회사 공동 작업공간 로그인 완료 · 자동 동기화 활성');return}await loadCloud(true)}
+async function cloudLogin(){storeConfig();const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;if(!email||!password)throw Error('이메일과 비밀번호를 입력해주세요.');const r=await cloudRequest('/auth/v1/token?grant_type=password','POST',{email,password});if(!r.access_token||!r.user?.id)throw Error('로그인 응답을 확인할 수 없습니다.');localStorage.setItem(REMEMBER_KEY,$('#cloudRemember').checked?'1':'0');persistSession(r);updateCloudStatus(`로그인 완료: ${r.user.email} · 클라우드 데이터 확인 중`);if(await teamActivate()){localStorage.removeItem(TEAM_INVITE_PENDING_KEY);updateCloudStatus('회사 공동 작업공간 로그인 완료 · 자동 동기화 활성');return}if(localStorage.getItem(TEAM_INVITE_PENDING_KEY)){if(await teamJoinPendingInvite()){updateCloudStatus('초대받은 회사 작업공간에 가입하고 로그인했습니다.');return}}await loadCloud(true)}
 async function renewSession(){if(!session?.refresh_token)throw Error('로그인이 필요합니다.');const r=await cloudRequest('/auth/v1/token?grant_type=refresh_token','POST',{refresh_token:session.refresh_token});if(r.access_token)persistSession({...r,user:r.user||session?.user});return r}
 async function loadCloud(promptBefore=true){if(!session?.user?.id)throw Error('클라우드에 로그인해주세요.');const data=await cloudRequest('/rest/v1/taskflow_store?user_id=eq.'+encodeURIComponent(session.user.id)+'&select=data,updated_at');if(Array.isArray(data)&&data.length&&data[0].data?.projects){const arr=data[0].data.projects.map(p=>normalizeNode(p));if(promptBefore&&!confirm(`클라우드에 저장된 사업 ${arr.length}개가 있습니다. 이 데이터를 불러오면 현재 기기 데이터를 대체합니다.\n먼저 로컬 데이터를 백업하려면 [취소]를 누르고 JSON 백업을 받아주세요.`)){updateCloudStatus('로그인 완료 · 클라우드 자료를 불러오지 않았습니다. 로컬 변경 시 클라우드에 반영될 수 있으니 백업을 권장합니다.');return}projects=arr;currentProjectId=selectedId=projects[0]?.id||null;focusId=null;view='dashboard';localStorage.setItem(KEY,JSON.stringify(projects));cloudReady=true;markSynced();render();updateCloudStatus(`클라우드에서 사업 ${arr.length}개를 불러왔습니다.`)}else{if(promptBefore&&!confirm('클라우드에 저장된 자료가 없습니다. 현재 기기 데이터를 클라우드에 처음 저장할까요?'))return;await pushCloud();updateCloudStatus('첫 클라우드 저장 완료.')}}
 async function pushCloud(){if(!session?.user?.id)throw Error('클라우드 로그인이 필요합니다.');if(cloudRunning)return;cloudRunning=true;try{await cloudRequest('/rest/v1/taskflow_store?on_conflict=user_id','POST',{user_id:session.user.id,data:{projects},updated_at:new Date().toISOString()},{Prefer:'resolution=merge-duplicates,return=minimal'});cloudReady=true;markSynced();$('#saveLabel').textContent='기기 + 클라우드 저장됨'}finally{cloudRunning=false}}
@@ -1022,6 +1048,7 @@ function handleGlobalClick(e){const target=e.target;
  if(target.closest('#teamIssueInvite')){cloudAction(teamCreateInvite);return}
  if(target.closest('#teamImport')){cloudAction(teamImportLegacy);return}
  if(target.closest('#teamReload')){cloudAction(async()=>{if(team.dirty&&!confirm('로컬에서 아직 동기화되지 않은 변경이 있습니다. 서버 데이터를 다시 불러올까요?'))return;team.dirty=false;await teamLoadMembers();await teamRefresh(true)});return}
+ if(target.closest('#teamCopyLink')){const link=$('#teamIssuedLink')?.value;if(link){if(navigator.clipboard?.writeText)navigator.clipboard.writeText(link).then(()=>notify('초대 링크가 복사됐습니다.')).catch(()=>notify('텍스트를 선택해 복사하세요.'));else{$('#teamIssuedLink').select();document.execCommand('copy');notify('초대 링크가 복사됐습니다.')}}return}
  if(target.closest('#teamCopyCode')){const code=$('#teamIssuedCode')?.value;if(code){if(navigator.clipboard?.writeText)navigator.clipboard.writeText(code).then(()=>notify('초대코드가 복사됐습니다.')).catch(()=>notify('텍스트를 선택하여 복사하세요.'));else{$('#teamIssuedCode').select();document.execCommand('copy');notify('초대코드가 복사됐습니다.')}}return}
  if(target.closest('#mapPrintButton')){openMapPrintDialog();return}
  if(target.closest('#printButton')||target.closest('#printInPreview')){window.print();return}
@@ -1040,7 +1067,11 @@ $('#cloudClose').addEventListener('click',closeCloud);$('#cloudBackdrop').addEve
 $('#cloudSignup').addEventListener('click',()=>cloudAction(cloudSignup));$('#cloudResend').addEventListener('click',()=>cloudAction(cloudResend));$('#cloudRemember').addEventListener('change',e=>{localStorage.setItem(REMEMBER_KEY,e.target.checked?'1':'0');if(session?.refresh_token)persistSession(session)});$('#cloudLogin').addEventListener('click',()=>cloudAction(cloudLogin));$('#cloudLogout').addEventListener('click',()=>{clearSavedSession();updateCloudStatus('로그아웃됨 · 이 기기의 개인 및 공동 자료 캐시는 유지됩니다.');render();notify('클라우드에서 로그아웃했습니다.')});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeEntry();closeCloud();closeDuplicate();closeMapPrintDialog();$('#app').classList.remove('show-side','show-inspector')}if(e.ctrlKey&&e.key==='Enter'&&e.target.closest('#inspector')){e.preventDefault();saveEdit()}});
 window.addEventListener('storage',e=>{if(e.key===KEY&&e.newValue){try{projects=JSON.parse(e.newValue).map(p=>normalizeNode(p));render()}catch(err){}}});
-if(!localStorage.getItem(KEY))save();else if(session)$('#saveLabel').textContent='저장된 로그인 정보 확인 중';render();if(session?.refresh_token)restoreCloudLogin();
+const inviteOpened=teamInviteFromLink();
+if(!localStorage.getItem(KEY))save();else if(session)$('#saveLabel').textContent='저장된 로그인 정보 확인 중';
+render();
+if(inviteOpened&&!session){openCloud();updateCloudStatus('회사 작업공간 초대 링크입니다. 로그인하거나 계정 등록 후 참여하세요.')}
+if(session?.refresh_token)restoreCloudLogin();
 })();
 </script>
 </body>
