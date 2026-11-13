@@ -843,7 +843,7 @@ function teamStoreRecoverySnapshot(snapshot,reason=''){
 function teamDownloadRecovery(){
  const current=teamReadPendingDraft();
  const recovery=(()=>{try{return JSON.parse(localStorage.getItem(teamRecoveryKey())||'null')}catch(e){return null}})();
- const data=current?.projects?.length?current:recovery;
+ const data=Array.isArray(current?.projects)?current:recovery;
  if(!Array.isArray(data?.projects))throw Error('별도 보관된 복구용 작업본이 없습니다.');
  const payload={app:'TaskFlow',version:3,exportedAt:new Date().toISOString(),kind:'local-recovery',projects:data.projects};
  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});
@@ -991,7 +991,8 @@ function teamQueueSave(){
  team.timer=setTimeout(()=>teamFlush().catch(e=>{
   console.warn('TaskFlow collaborative save:',e);
   $('#saveLabel').textContent='공동 저장 실패 · 변경내용은 이 기기에 임시 보관됨';
-  notify('공동 저장 실패: '+e.message);
+  if(authNeedsRelogin)notify('로그인 갱신이 필요합니다. 관리자 설정 → 계정·클라우드 설정에서 기존 계정으로 다시 로그인하세요. 기기 작업본은 보관 중입니다.');
+  else notify('공동 저장 실패: '+e.message);
  }),1300);
 }
 async function teamFlush(){
@@ -1462,7 +1463,7 @@ function handleGlobalClick(e){const target=e.target;
  if(target.closest('[data-owner-remove]')){const row=target.closest('.assignee-row');if(row)row.remove();return}
  if(target.closest('#newProject')){addDialog();return}
  if(target.closest('#duplicateCurrent')){openDuplicate(currentProjectId);return}
- if(target.closest('#cloudPull')){cloudAction(async()=>{if(team.active){if(team.dirty&&!confirm('기기에 아직 동기화하지 않은 변경이 있습니다. 서버 자료를 불러올까요?'))return;team.dirty=false;await teamRefresh(true)}else{await renewSession();await loadCloud(true);render()}});return}
+ if(target.closest('#cloudPull')){cloudAction(async()=>{if(team.active){if(team.dirty){if(!confirm('아직 클라우드에 전송하지 않은 변경이 있습니다. 서버 자료로 교체하시겠습니까? 변경 전 작업본은 이 기기에 별도로 보관됩니다.'))return;teamStoreRecoverySnapshot(projects,'직접 공동자료 불러오기 전 작업본');localStorage.removeItem(teamDraftKey());}team.dirty=false;await teamRefresh(true)}else{await renewSession();await loadCloud(true);render()}});return}
  if(target.closest('#cloudPush')){cloudAction(async()=>{if(team.active){await teamFlush()}else{await renewSession();if(!confirm('현재 기기의 사업을 클라우드에 저장합니다. 기존 데이터가 덮어써질 수 있습니다. 계속할까요?'))return;await pushCloud();render()}});return}
  if(target.closest('#saveNode')){saveEdit();return}
  if(target.closest('#closeInspector')){setInspectorOpen(false);return}
@@ -1481,7 +1482,7 @@ function handleGlobalClick(e){const target=e.target;
  if(target.closest('#teamJoin')){cloudAction(teamJoinWorkspace);return}
  if(target.closest('#teamIssueInvite')){cloudAction(teamCreateInvite);return}
  if(target.closest('#teamImport')){cloudAction(teamImportLegacy);return}
- if(target.closest('#teamReload')){cloudAction(async()=>{if(team.dirty&&!confirm('로컬에서 아직 동기화되지 않은 변경이 있습니다. 서버 데이터를 다시 불러올까요?'))return;team.dirty=false;await teamLoadMembers();await teamRefresh(true)});return}
+ if(target.closest('#teamReload')){cloudAction(async()=>{if(team.dirty){if(!confirm('아직 전송하지 않은 변경이 있습니다. 서버 자료로 교체하시겠습니까? 이전 작업본은 이 기기에 별도로 보관됩니다.'))return;teamStoreRecoverySnapshot(projects,'직접 서버 다시 불러오기 전 작업본');localStorage.removeItem(teamDraftKey());}team.dirty=false;await teamLoadMembers();await teamRefresh(true)});return}
  if(target.closest('#teamCopyLink')){const link=$('#teamIssuedLink')?.value;if(link){if(navigator.clipboard?.writeText)navigator.clipboard.writeText(link).then(()=>notify('초대 링크가 복사됐습니다.')).catch(()=>notify('텍스트를 선택해 복사하세요.'));else{$('#teamIssuedLink').select();document.execCommand('copy');notify('초대 링크가 복사됐습니다.')}}return}
  if(target.closest('#teamCopyCode')){const code=$('#teamIssuedCode')?.value;if(code){if(navigator.clipboard?.writeText)navigator.clipboard.writeText(code).then(()=>notify('초대코드가 복사됐습니다.')).catch(()=>notify('텍스트를 선택하여 복사하세요.'));else{$('#teamIssuedCode').select();document.execCommand('copy');notify('초대코드가 복사됐습니다.')}}return}
  if(target.closest('#mapPrintButton')){openMapPrintDialog();return}
