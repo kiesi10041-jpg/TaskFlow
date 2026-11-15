@@ -569,9 +569,9 @@ function renderMapList(){
   <div class="map-list-tree">${show(p)}</div>
  </div>`;
 }
-function renderMap(){
+function renderMap(){return mapPresentation==='list'?renderMapList():renderMapGraph()}
+function renderMapGraph(){
  const p=current();if(!p)return '<div class="empty">등록된 사업이 없습니다.</div>';
- if(mapPresentation==='list')return renderMapList();
  const boxes=[],edges=[];let cursor=104,maxDepth=0,leafCount=0;
  const wFor=d=>d===0?255:d===1?250:d===2?275:276;
  const xFor=d=>d===0?40:d===1?362:d===2?693:1042+(d-3)*346;
@@ -641,7 +641,7 @@ function mapPrintGraph(compact=false){
   }).join('');
   return {html:`<div class="graph print-compact" style="width:${width}px;height:${height}px"><svg viewBox="0 0 ${width} ${height}" aria-hidden="true">${svg}</svg>${cards}</div>`,width,height,compact:true};
  }
- const temp=document.createElement('div');temp.innerHTML=renderMap();
+ const temp=document.createElement('div');temp.innerHTML=renderMapGraph();
  const graph=temp.querySelector('#graph');
  if(!graph)throw Error('출력할 연결형 구조도가 없습니다.');
  let right=0,bottom=0;
@@ -1688,6 +1688,24 @@ function handleGlobalClick(e){const target=e.target;
  if(target.closest('#zoomPlus')){zoom=Math.min(125,zoom+10);render();return}
 }
 $('#app').addEventListener('click',handleGlobalClick);
+// Two-finger zoom for the connected graph. Normal single-finger scrolling is untouched.
+let mapPinch=null;
+const pinchDistance=touches=>Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY);
+$('#content').addEventListener('touchstart',e=>{
+ if(view!=='map'||mapPresentation!=='graph'||!e.target.closest('#mapPane'))return;
+ if(e.touches.length===2){const d=pinchDistance(e.touches);mapPinch={start:d,last:d,initialZoom:zoom};}
+},{passive:true});
+$('#content').addEventListener('touchmove',e=>{
+ if(mapPinch&&e.touches.length===2)mapPinch.last=pinchDistance(e.touches);
+},{passive:true});
+$('#content').addEventListener('touchend',e=>{
+ if(!mapPinch||e.touches.length>=2)return;
+ const next=Math.max(55,Math.min(130,Math.round(mapPinch.initialZoom*mapPinch.last/Math.max(1,mapPinch.start)/5)*5));
+ mapPinch=null;
+ if(Math.abs(next-zoom)>=5){zoom=next;render();}
+},{passive:true});
+$('#content').addEventListener('touchcancel',()=>{mapPinch=null},{passive:true});
+
 $('#content').addEventListener('input',e=>{if(e.target.id!=='projectSearch')return;query=e.target.value;const caret=e.target.selectionStart;const grid=$('#projectGrid');const t=document.createElement('div');t.innerHTML=renderDashboard();grid.innerHTML=t.querySelector('#projectGrid')?.innerHTML||'';e.target.setSelectionRange(caret,caret)});
 $('#mapPrintPaper').addEventListener('change',mapPrintSummary);$('#mapPrintMode').addEventListener('change',mapPrintSummary);
 $('#mapPrintCancel').addEventListener('click',closeMapPrintDialog);
