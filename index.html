@@ -1002,6 +1002,323 @@ function teamAwaitingConnection(){
  try{const m=JSON.parse(localStorage.getItem('taskflow-v3-last-team')||'null');return m?.userId===session.user.id}catch(e){return false}
 }
 const teamIsManager=()=>team.active&&['admin','lead'].includes(team.role);
+function journalTypeName(kind){return ({meeting:'회의록',internal:'내부 협의',external:'외부 협의',phone:'전화 협의',message:'메신저 협의',site:'현장 방문',memo:'업무 메모',issue:'이슈'})[kind]||'업무기록'}
+
+function journalFindNode(projectId,id){
+ const project=projects.find(p=>p.id===projectId);if(!project)return null;
+ return findNode(id,project)
+}
+
+function journalPath(projectId,id){
+ const result=[],project=projects.find(p=>p.id===projectId);
+ if(!project)return ['사업 미확인'];
+ let f=journalFindNode(projectId,id),limit=0;
+ while(f&&limit++<27){
+  result.unshift(f.n.title);
+  if(!f.parent)break;
+  f=journalFindNode(projectId,f.parent.id);
+ }
+ return result.length?result:[project.title];
+}
+
+function journalAllowed(nodeId,projectId){
+ if(!team.active||!team.activityReady||authNeedsRelogin)return false;
+ const x=journalFindNode(projectId,nodeId);
+ if(!x)return false;
+ if(teamIsManager())return true;
+ return x.level>=2&&team.categoryMembers.some(a=>a.project_id===projectId&&a.category_id===journalCategory(projectId,nodeId)&&a.user_id===session.user.id);
+}
+
+function journalCategory(projectId,nodeId){
+ let x=journalFindNode(projectId,nodeId),d=x?.level||0;
+ if(d<1)return null;
+ while(d>1){x=journalFindNode(projectId,x.parent.id);d--}
+ return x.n.id;
+}
+
+function journalAllForNode(projectId,id){
+ return (team.activityLogs||[]).filter(log=>{
+  if(log.project_id!==projectId)return false;
+  if(log.node_id===id)return true;
+  let f=journalFindNode(projectId,log.node_id),i=0;
+  while(f?.parent&&i++<30){if(f.parent.id===id)return true;f=journalFindNode(projectId,f.parent.id)}
+  return false;
+ });
+}
+
+function journalStatsForNode(projectId,id){
+ const arr=journalAllForNode(projectId,id);
+ const needs=arr.filter(a=>a.needs_review||a.followup_status==='pending');
+ const late=needs.filter(a=>a.followup_status==='pending'&&a.followup_due&&a.followup_due<today());
+ return {count:arr.length,needs:needs.length,late:late.length};
+}
+
+function journalBadge(nodeId,projectId){
+ if(!team.activityReady)return '';
+ const x=journalStatsForNode(projectId,nodeId);
+ if(!x.count)return '';
+ return `<span class="journal-node-badge ${x.late?'overdue':x.needs?'attention':''}" title="업무기록 ${x.count}건 · 확인 필요 ${x.needs}건">▤ ${x.count}${x.needs?` · ! ${x.needs}`:''}</span>`;
+}
+
+async function journalLoad(){
+ if(!team.active)return;
+ try{
+  const rows=await teamAllRows('/rest/v1/taskflow_activity_logs?select=*&order=record_date.desc,created_at.desc');
+  team.activityLogs=rows;team.activityReady=true;team.activityError='';
+ }catch(err){
+  if(/PGRST20[045]|42P01|does not exist|schema cache|not found/i.test(String(err.code||'')+' '+err.message)){
+   team.activityReady=false;team.activityError='업무기록 저장 테이블이 설치되지 않았습니다. 3.3 SQL을 적용해 주세요.';
+  }else{
+   team.activityError='업무기록을 불러오지 못했습니다: '+err.message;
+   // Do not show stale shared records after an access denial.
+   if(Number(err.status)===401||Number(err.status)===403){team.activityReady=false;team.activityLogs=[]}
+  }
+ }
+}
+
+function journalVisibleRecords(){
+ const filteredProjects=projects.filter(p=>(businessYearFilter==='all'||p.businessYear===businessYearFilter)&&(journalScope==='all'||p.id===journalScope));
+ return (team.activityLogs||[]).filter(a=>filteredProjects.some(p=>p.id===a.project_id));
+}
+
+function journalRenderableList(log){
+ const p=projects.find(p=>p.id===log.project_id),path=journalPath(log.project_id,log.node_id);
+ const can=journalAllowed(log.node_id,log.project_id);
+ const urgent=log.followup_status==='pending'||log.needs_review;
+ const overdue=log.followup_status==='pending'&&log.followup_due&&log.followup_due<today();
+ const desc=String(log.content||'').slice(0,180);
+ return `<article class="journal-entry ${urgent?'attention':''}">
+ <div class="journal-entry-head"><span class="journal-kind">${esc(journalTypeName(log.kind))}</span><span>${esc(log.record_date||'')}${log.record_time?' · '+esc(String(log.record_time).slice(0,5)):''}</span>${overdue?'<span class="journal-warning">기한 지연</span>':urgent?'<span class="journal-warning">확인 필요</span>':''}</div>
+ <h3>${esc(log.title||'제목 없음')}</h3>
+ <p class="journal-entry-path">${esc(p?.businessYear||'연도 미지정')} · ${esc(path.join(' → '))}</p>
+ <p class="journal-entry-body">${esc(desc)}${String(log.content||'').length>180?'…':''}</p>
+ ${log.decision?`<p class="journal-entry-decision"><b>결정</b> ${esc(String(log.decision).slice(0,170))}</p>`:''}
+ ${log.followup?`<p class="journal-entry-followup"><b>후속</b> ${esc(String(log.followup).slice(0,170))} ${log.followup_due?`<span>· 마감 ${esc(log.followup_due)}</span>`:''}</p>`:''}
+ <div class="journal-entry-actions"><button class="btn" type="button" data-journal-print="${esc(log.id)}">⎙ A4 회의록 인쇄</button>${can?`<button class="btn" type="button" data-journal-edit="${esc(log.id)}">수정</button><button class="btn danger" type="button" data-journal-delete="${esc(log.id)}">삭제</button>`:''}</div>
+ </article>`;
+}
+
+function journalDateEvents(date,records){
+ const events=[];
+ for(const log of records){
+  if(log.record_date===date)events.push({kind:'record',label:journalTypeName(log.kind)+' · '+log.title,id:log.id,project_id:log.project_id});
+  if(log.followup_status==='pending'&&log.followup_due===date)events.push({kind:'due',label:'후속 마감 · '+(log.followup||log.title),id:log.id,project_id:log.project_id});
+ }
+ if(journalScope!=='all'){
+  const p=projects.find(x=>x.id===journalScope);
+  if(p?.deadline===date)events.push({kind:'project',label:'사업 마감 · '+p.title});
+ }
+ return events;
+}
+
+function renderJournal(){
+ const enabled=team.active&&team.activityReady;
+ const month=/^\d{4}-\d{2}$/.test(journalMonth)?journalMonth:today().slice(0,7);
+ const [yy,mm]=month.split('-').map(Number),start=new Date(yy,mm-1,1),first=start.getDay();
+ const count=new Date(yy,mm,0).getDate(),records=journalVisibleRecords();
+ const cells=Array.from({length:Math.ceil((first+count)/7)*7},(_,i)=>{
+  const day=i-first+1,valid=day>=1&&day<=count;
+  if(!valid)return `<div class="journal-day outside"></div>`;
+  const date=month+'-'+String(day).padStart(2,'0'),events=journalDateEvents(date,records);
+  return `<div class="journal-day ${date===today()?'today':''}"><span class="journal-day-number">${day}</span>${events.slice(0,3).map(e=>`<button type="button" class="journal-calendar-event ${e.kind}" ${e.id?`data-journal-print="${esc(e.id)}"`:''} title="${esc(e.label)}">${esc(e.label)}</button>`).join('')}${events.length>3?`<span class="journal-calendar-more">+${events.length-3}건</span>`:''}</div>`;
+ }).join('');
+ const listed=records.filter(log=>{
+  if(journalFilter==='review')return log.needs_review||log.followup_status==='pending';
+  if(journalFilter==='meeting')return log.kind==='meeting'||log.kind==='internal'||log.kind==='external';
+  if(journalFilter==='followup')return log.followup_status==='pending';
+  return true;
+ });
+ const pending=records.filter(x=>x.needs_review||x.followup_status==='pending').length;
+ const projectsOptions=projects.filter(p=>businessYearFilter==='all'||p.businessYear===businessYearFilter);
+ const action=enabled&&projectsOptions.some(p=>journalCanWriteInProject(p.id))?'<button class="btn primary" id="journalNew">＋ 업무기록 작성</button>':'';
+ return `<div class="journal-page">
+ <div class="journal-top">
+  <div><div class="eyebrow">MEETING / WORK JOURNAL</div><h2>회의·업무기록 및 일정</h2><p>과업별 협의 내용과 결정사항을 날짜별로 보관하고, 미처리 후속 조치를 확인합니다.</p></div>${action}
+ </div>
+ ${!team.active?'<div class="journal-install">업무기록 공동 저장은 회사 작업공간에 로그인한 후 사용할 수 있습니다.</div>':!team.activityReady?`<div class="journal-install"><strong>업무기록 기능 설치 필요</strong><p>${esc(team.activityError||'Supabase 공동 작업 SQL 3.3을 추가로 실행해 주세요.')}</p><a href="https://github.com/kiesi10041-jpg/TaskFlow/blob/main/supabase_team_v3_3.sql" target="_blank" rel="noopener noreferrer">업무기록 SQL(3.3) 열기</a> · <button type="button" class="btn" id="journalReload">설치 확인·다시 불러오기</button></div>`:''}
+ <div class="journal-filters">
+  <label>사업연도 <select id="journalYear">${['all','2026','2027','2028','2029','2030'].map(y=>`<option value="${y}" ${businessYearFilter===y?'selected':''}>${y==='all'?'전체 연도':y+'년'}</option>`).join('')}</select></label>
+  <label>사업 <select id="journalProject"><option value="all">전체 사업</option>${projectsOptions.map(p=>`<option value="${esc(p.id)}" ${journalScope===p.id?'selected':''}>${esc(p.title)}</option>`).join('')}</select></label>
+  <label>기록 <select id="journalRecordFilter">${[['all','전체'],['meeting','회의·협의'],['followup','후속 조치'],['review','확인 필요']].map(([v,l])=>`<option value="${v}" ${journalFilter===v?'selected':''}>${l}</option>`).join('')}</select></label>
+ </div>
+ <section class="journal-calendar">
+  <div class="journal-calendar-title"><strong>${yy}년 ${mm}월</strong><div><button type="button" class="btn" id="journalPrev">〈 이전 달</button><button type="button" class="btn" id="journalNow">이번 달</button><button type="button" class="btn" id="journalNext">다음 달 〉</button></div></div>
+  <div class="journal-weeknames">${['일','월','화','수','목','금','토'].map(d=>`<span>${d}</span>`).join('')}</div>
+  <div class="journal-days">${cells}</div>
+  <div class="journal-legend"><span>● 회의·협의</span><span>● 후속 조치 마감</span><span>● 사업 마감</span></div>
+ </section>
+ <div class="journal-list-title"><h2>업무기록 ${listed.length}건</h2><span>${pending?`확인 필요 ${pending}건`:'확인 필요 없음'}</span></div>
+ ${enabled?(listed.length?`<div class="journal-entry-grid">${listed.map(journalRenderableList).join('')}</div>`:'<div class="empty">등록된 업무기록이 없습니다. 담당 세부과업에서 업무기록을 작성해 보세요.</div>'):'<div class="empty">설치를 완료한 뒤 이 화면에서 날짜별 기록을 확인할 수 있습니다.</div>'}
+ </div>`;
+}
+
+function journalCanWriteInProject(projectId){
+ if(!team.active||!team.activityReady||authNeedsRelogin)return false;
+ if(teamIsManager())return true;
+ return team.categoryMembers.some(c=>c.project_id===projectId&&c.user_id===session?.user?.id);
+}
+
+function journalEditableNodes(){
+ const out=[];
+ const crawl=(p,n,depth,trail)=>{
+  if(journalAllowed(n.id,p.id))out.push({projectId:p.id,id:n.id,label:trail.join(' → ')});
+  (n.children||[]).forEach(c=>crawl(p,c,depth+1,[...trail,c.title]));
+ };
+ for(const p of projects.filter(p=>businessYearFilter==='all'||p.businessYear===businessYearFilter).filter(p=>journalScope==='all'||journalScope===p.id))
+  crawl(p,p,0,[p.title]);
+ return out;
+}
+
+function journalOpenEditor(logId=null,preferredNode=null){
+ if(!team.activityReady){notify('업무기록 SQL(3.3)을 설치한 뒤 이용할 수 있습니다.');return}
+ const existing=logId?(team.activityLogs||[]).find(x=>x.id===logId):null;
+ const options=journalEditableNodes();
+ const filtered=existing?options.filter(x=>x.id===existing.node_id):options;
+ if(!filtered.length){notify('업무기록 작성 권한이 있는 세부과업이 없습니다. 먼저 수행과업 배정을 확인해 주세요.');return}
+ activityEditingId=existing?.id||null;
+ $('#activityModalTitle').textContent=existing?'업무기록 수정':'새 업무기록 작성';
+ $('#activityNode').innerHTML=filtered.map(o=>`<option value="${esc(o.projectId)}|${esc(o.id)}" ${o.id===(existing?.node_id||preferredNode)?'selected':''}>${esc(o.label)}</option>`).join('');
+ $('#activityNode').disabled=!!existing;
+ const fields={activityDate:existing?.record_date||today(),activityTime:String(existing?.record_time||'').slice(0,5),activityKind:existing?.kind||'meeting',
+ activityTitle:existing?.title||'',activityPlace:existing?.place||'',activityAttendees:existing?.attendees||'',
+ activityContent:existing?.content||'',activityDecision:existing?.decision||'',activityFollowup:existing?.followup||'',
+ activityFollowupDue:existing?.followup_due||'',activityFollowupStatus:existing?.followup_status||'none'};
+ for(const [key,val] of Object.entries(fields))$('#'+key).value=val;
+ $('#activityNeedsReview').checked=!!existing?.needs_review;
+ $('#activityFormError').classList.add('hidden');
+ $('#activitySubmit').disabled=false;
+ $('#activityBackdrop').classList.remove('hidden');
+}
+
+function journalCloseEditor(){
+ $('#activityBackdrop').classList.add('hidden');activityEditingId=null;
+}
+
+async function journalSubmit(){
+ const alertEl=$('#activityFormError');
+ alertEl.classList.add('hidden');
+ if(!team.active||!team.activityReady)throw Error('업무기록 공동 저장 기능이 연결되지 않았습니다.');
+ if(authNeedsRelogin)throw Error('로그인이 만료됐습니다. 기존 계정으로 로그인한 후 저장해 주세요.');
+ const [projectId,nodeId]=$('#activityNode').value.split('|');
+ if(!journalAllowed(nodeId,projectId))throw Error('이 과업에 업무기록을 작성할 권한이 없습니다.');
+ const payload={
+  project_id:projectId,node_id:nodeId,record_date:$('#activityDate').value,record_time:$('#activityTime').value||null,
+  kind:$('#activityKind').value,title:$('#activityTitle').value.trim(),place:$('#activityPlace').value.trim(),
+  attendees:$('#activityAttendees').value.trim(),content:$('#activityContent').value.trim(),
+  decision:$('#activityDecision').value.trim(),followup:$('#activityFollowup').value.trim(),
+  followup_due:$('#activityFollowupDue').value||null,followup_status:$('#activityFollowupStatus').value,
+  needs_review:$('#activityNeedsReview').checked
+ };
+ if(!payload.title||!payload.record_date||!payload.content)throw Error('날짜, 제목, 주요 내용을 입력해 주세요.');
+ if(payload.followup_status==='pending'&&!payload.followup.trim())throw Error('후속 조치가 있으면 내용을 입력해 주세요.');
+ if(payload.followup_status==='none'&&payload.followup.trim())payload.followup_status='pending';
+ const button=$('#activitySubmit');
+ button.disabled=true;
+ try{
+  if(activityEditingId){
+   const prior=team.activityLogs.find(x=>x.id===activityEditingId);
+   if(!prior)throw Error('수정할 기록을 찾을 수 없습니다.');
+   const patch={...payload};delete patch.project_id;delete patch.node_id;
+   const result=await cloudRequest('/rest/v1/taskflow_activity_logs?id=eq.'+encodeURIComponent(prior.id)+'&revision=eq.'+prior.revision+'&select=id,revision','PATCH',patch,{'Prefer':'return=representation'});
+   if(!Array.isArray(result)||result.length!==1)throw Error('다른 직원이 먼저 수정했습니다. 화면을 다시 불러와 확인해 주세요.');
+  }else await cloudRequest('/rest/v1/taskflow_activity_logs','POST',
+    {...payload,created_by:session.user.id,updated_by:session.user.id},{'Prefer':'return=minimal'});
+  journalCloseEditor();
+  await journalLoad();
+  render();
+  notify('업무기록을 저장했습니다.');
+ }catch(err){
+  alertEl.textContent=err.message;
+  alertEl.classList.remove('hidden');
+  throw err;
+ }finally{button.disabled=false}
+}
+
+async function journalDelete(id){
+ const log=(team.activityLogs||[]).find(x=>x.id===id);
+ if(!log||!journalAllowed(log.node_id,log.project_id))throw Error('삭제 권한이 없습니다.');
+ if(!confirm('업무기록을 삭제하시겠습니까? 회의록과 후속 조치 정보가 함께 삭제됩니다.'))return;
+ await cloudRequest('/rest/v1/taskflow_activity_logs?id=eq.'+encodeURIComponent(id),'DELETE');
+ await journalLoad();render();notify('업무기록이 삭제되었습니다.');
+}
+
+function journalLines(s){
+ return String(s||'').trim().split(/\n+/).map(p=>`<p>${esc(p)}</p>`).join('')||'<p class="emptyline">—</p>';
+}
+
+function journalPrintHTML(log){
+ const p=projects.find(p=>p.id===log.project_id);
+ const path=journalPath(log.project_id,log.node_id);
+ const author=team.members.find(m=>m.user_id===log.created_by);
+ const company=team.workspace?.name||'TaskFlow';
+ const header=log.kind==='meeting'?'회의록':'업무협의 기록지';
+ const line=(k,v)=>`<tr><th>${esc(k)}</th><td>${esc(v||'—')}</td></tr>`;
+ const safe=(x)=>esc(x||'');
+ const fileTitle=log.title||'업무기록';
+ return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safe(header+' - '+fileTitle)}</title><style>
+ @page{size:A4 portrait;margin:15mm 10mm}
+ *{box-sizing:border-box}body{margin:0;color:#182235;background:#eceff3;font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;font-size:10pt;line-height:1.65;word-break:keep-all}
+ .controls{padding:13px 18px;background:#14294b;color:#fff;display:flex;gap:10px;align-items:center;justify-content:center}
+ .controls button{border:0;background:#4165e8;border-radius:7px;padding:11px 17px;color:#fff;font-weight:800;font-size:13px}
+ .controls span{font-size:11px}
+ .sheet{position:relative;width:210mm;min-height:297mm;margin:20px auto;background:#fff;padding:20mm 10mm 19mm;box-shadow:0 6px 24px #132e4726}
+ .runninghead{position:absolute;left:10mm;right:10mm;top:10mm;color:#5e7089;font-size:8pt;display:flex;justify-content:space-between;border-bottom:1px solid #dfe3e8;padding-bottom:2mm}
+ .runningfoot{position:absolute;left:10mm;right:10mm;bottom:10mm;color:#728094;font-size:8pt;border-top:1px solid #dfe3e8;padding-top:2mm;display:flex;justify-content:space-between}
+ h1{text-align:center;margin:8mm 0 10mm;font-size:20pt;letter-spacing:2px}
+ h2{font-size:11pt;border-bottom:1px solid #1b304c;margin:9mm 0 3mm;padding-bottom:2mm;break-after:avoid}
+ table{border-collapse:collapse;width:100%;table-layout:fixed}
+ th,td{border:1px solid #bbc4d0;padding:2.7mm 3mm;text-align:left;vertical-align:top;font-size:9.5pt;overflow-wrap:anywhere}
+ th{width:30mm;background:#f1f4f8;font-weight:750}
+ .main-content{white-space:normal;overflow-wrap:anywhere;line-height:1.85}
+ .main-content p{margin:0 0 2mm;white-space:pre-wrap}
+ .followbox{background:#f7f9fc;border:1px solid #dce4ee;padding:4mm;break-inside:avoid}
+ .emptyline{color:#8491a1}
+ .section{break-inside:auto}
+ .signature{margin:15mm 0 5mm;text-align:right;font-size:10pt}
+ @media print{
+  html,body{background:#fff;margin:0;padding:0}
+  .controls{display:none!important}
+  .sheet{width:auto;min-height:0;margin:0;padding:3mm 0 0;box-shadow:none}
+  .runninghead{position:fixed;top:-6mm;left:0;right:0}
+  .runningfoot{position:fixed;bottom:-7mm;left:0;right:0}
+  h1{margin-top:9mm}
+  h2{break-after:avoid}
+  table tr{break-inside:avoid}
+ }
+ @media screen and (max-width:850px){.sheet{transform-origin:top left;width:210mm;margin:10px auto}.controls{flex-wrap:wrap}}
+ </style></head><body>
+ <div class="controls"><span>용지 A4 세로 · 상하 15mm · 좌우 10mm · 머리말·꼬리말 기준 10mm (브라우저 기본 머리글/바닥글은 인쇄 옵션에서 해제)</span><button onclick="window.print()">인쇄 / PDF 저장</button></div>
+ <div class="sheet"><div class="runninghead"><span>${safe(company)}</span><span>MEETING / WORK REPORT</span></div>
+ <div class="runningfoot"><span>${safe(p?.title||'업무기록')}</span><span>${safe(log.record_date)}</span></div>
+ <h1>${safe(header)}</h1>
+ <table><tbody>
+ ${line('사업명',p?.title)}
+ ${line('사업연도',p?.businessYear?p.businessYear+'년':'미지정')}
+ ${line('관련 과업',path.slice(1).join(' → '))}
+ ${line('제목',log.title)}
+ ${line('일시',(log.record_date||'')+(log.record_time?' '+String(log.record_time).slice(0,5):''))}
+ ${line('장소 / 방식',log.place)}
+ ${line('참석자',log.attendees)}
+ ${line('작성자',author?[author.display_name||author.email,author.department,author.job_title].filter(Boolean).join(' / '):'등록 계정')}
+ </tbody></table>
+ <div class="section"><h2>1. 주요 내용</h2><div class="main-content">${journalLines(log.content)}</div></div>
+ <div class="section"><h2>2. 결정사항</h2><div class="main-content">${journalLines(log.decision)}</div></div>
+ <div class="section"><h2>3. 후속 조치 및 일정</h2><div class="followbox"><div class="main-content">${journalLines(log.followup)}</div><strong>처리기한: ${safe(log.followup_due||'해당 없음')}</strong> <span> / 상태: ${safe(log.followup_status==='done'?'처리 완료':log.followup_status==='pending'?'처리 필요':'해당 없음')}</span></div></div>
+ <div class="signature">기록일: ${safe(log.record_date)}　　작성: ${safe(author?.display_name||'')}</div>
+ </div></body></html>`;
+}
+
+function journalPrint(id){
+ const log=(team.activityLogs||[]).find(x=>x.id===id);
+ if(!log){notify('인쇄할 기록을 찾을 수 없습니다.');return}
+ const popup=window.open('','_blank');
+ if(!popup){notify('인쇄창이 차단되었습니다. Safari 팝업 허용 후 다시 눌러주세요.');return}
+ popup.document.open();
+ popup.document.write(journalPrintHTML(log));
+ popup.document.close();
+ popup.focus();
+}
+
 function teamCategoryId(nodeId){
  const found=findNode(nodeId);if(!found)return null;
  let n=found.n,level=found.level;
