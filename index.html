@@ -269,7 +269,7 @@
 .map-list-children{margin-left:14px;padding-left:16px;border-left:2px solid #dbe5f2}
 .map-list-node.root>.map-list-children{border-left-color:#9eb4d4}
 .map-list-node .map-list-node{margin:10px 0}
-@media (max-width:1100px), (pointer:coarse) and (max-width:1500px){
+@media (max-width:1100px), (any-pointer:coarse) and (max-width:1500px){
  .app,.app.inspector-closed{grid-template-columns:minmax(0,1fr)!important}
  .primaryarea{grid-column:1;min-width:0}
  .mobile-menu{display:inline-flex!important;align-items:center;justify-content:center;width:42px;min-width:42px;height:42px;font-size:19px}
@@ -328,12 +328,20 @@
  .toolbar .tab{font-size:10px;padding:8px 6px}
 }
 
+
+.mobile-close-side,.mobile-close-inspector{display:none}
+.zoombox #zoomReset{width:auto;min-width:45px;font-size:10px;font-weight:850;border-left:1px solid #dfe6ef;padding:0 6px;color:#4563a1}
+@media (max-width:1100px), (any-pointer:coarse) and (max-width:1500px){
+ .mobile-close-side{display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:38px;margin-left:auto;border:1px solid #526983;border-radius:10px;background:#1e3554;color:#e9f0fb;font-size:16px}
+ .mobile-close-inspector{display:flex;align-items:center;justify-content:flex-end;align-self:stretch;padding:13px 17px;min-height:48px;background:#f7f9fd;border:0;border-bottom:1px solid #e0e6ef;color:#455d7e;font-weight:850;font-size:12px}
+ .mobile-close-inspector:focus-visible,.mobile-close-side:focus-visible{outline:3px solid #7b99ff}
+}
 </style>
 </head>
 <body>
 <div class="app" id="app">
 <aside class="side" id="sidebar">
- <div class="brand"><div class="brand-icon">◈</div><div><strong>TaskFlow</strong><small>프로젝트 관리</small></div></div>
+ <div class="brand"><div class="brand-icon">◈</div><div><strong>TaskFlow</strong><small>프로젝트 관리</small></div><button class="mobile-close-side" type="button" id="closeMobileMenu" aria-label="사업 목록 닫기">✕</button></div>
  <div class="sidecaption">WORKSPACE</div>
  <button class="sidebutton" id="allProjectButton" data-view="dashboard"><span>▦</span> 전체 사업 현황</button>
  <div class="sidecaption">PROJECTS <span id="sideCount"></span></div>
@@ -343,10 +351,10 @@
 </aside>
 <button class="mobile-overlay" id="mobileOverlay" type="button" aria-label="사업 목록 또는 상세 패널 닫기"></button>
 <main class="primaryarea"><header class="topbar"><div style="display:flex;gap:10px;align-items:center;min-width:0"><button class="btn mobile-menu" id="mobileMenu" aria-label="사업 목록 열기" aria-expanded="false">☰</button><div style="min-width:0"><div class="eyebrow" id="pageEyebrow">PROJECT MANAGEMENT</div><h1 class="pagetitle" id="pageTitle">전체 사업 현황</h1><div class="pagesub" id="pageSub">사업을 선택하면 연결형 과업도를 볼 수 있습니다.</div></div></div><div class="topstats"><div class="topstat"><strong id="doneNum">0</strong><small>완료 단계</small></div><div class="topstat"><strong id="totalNum">0</strong><small>전체 단계</small></div><div class="topstat"><strong id="progressNum">0%</strong><small>진행률</small></div></div></header>
- <div class="toolbar"><div class="tabs"><button class="tab" id="tabDashboard" data-view="dashboard">전체 사업</button><button class="tab" id="tabMap" data-view="map">연결형 구조도</button><button class="tab" id="tabDetail" data-view="detail">세부 진행단계</button><button class="tab" id="tabPaper" data-view="print">A4 출력</button></div><span class="spacer"></span><div class="mobile-map-switch hidden" id="mapViewSwitch" role="group" aria-label="과업도 표시 방식"><button class="btn" type="button" id="mapShowGraph">연결도</button><button class="btn" type="button" id="mapShowList">목록 보기</button></div><div class="zoombox hidden" id="zoomTools"><button id="zoomMinus" aria-label="축소">−</button><span id="zoomValue">85%</span><button id="zoomPlus" aria-label="확대">＋</button></div><button class="btn" id="editInspector">✎ 항목 편집</button><button class="btn" type="button" id="duplicateCurrent">⧉ 사업 복제</button><button class="btn" id="mapPrintButton" type="button">⎙ 구조도 인쇄 · A4/A3</button><button class="btn primary" id="printButton">⎙ 체크리스트 인쇄</button></div>
+ <div class="toolbar"><div class="tabs"><button class="tab" id="tabDashboard" data-view="dashboard">전체 사업</button><button class="tab" id="tabMap" data-view="map">연결형 구조도</button><button class="tab" id="tabDetail" data-view="detail">세부 진행단계</button><button class="tab" id="tabPaper" data-view="print">A4 출력</button></div><span class="spacer"></span><div class="mobile-map-switch hidden" id="mapViewSwitch" role="group" aria-label="과업도 표시 방식"><button class="btn" type="button" id="mapShowGraph">연결도</button><button class="btn" type="button" id="mapShowList">목록 보기</button></div><div class="zoombox hidden" id="zoomTools"><button id="zoomMinus" aria-label="축소">−</button><span id="zoomValue">85%</span><button id="zoomPlus" aria-label="확대">＋</button><button id="zoomReset" aria-label="구조도 100퍼센트 확대" title="글자가 잘 보이는 기본 크기">100%</button></div><button class="btn" id="editInspector">✎ 항목 편집</button><button class="btn" type="button" id="duplicateCurrent">⧉ 사업 복제</button><button class="btn" id="mapPrintButton" type="button">⎙ 구조도 인쇄 · A4/A3</button><button class="btn primary" id="printButton">⎙ 체크리스트 인쇄</button></div>
  <section class="content" id="content"></section>
 </main>
-<aside class="inspector" id="inspector"><div class="inspector-body" id="inspectorBody"></div></aside>
+<aside class="inspector" id="inspector"><button class="mobile-close-inspector" type="button" id="closeInspectorMobile" aria-label="상세 편집창 닫기">✕ 상세 닫기</button><div class="inspector-body" id="inspectorBody"></div></aside>
 </div>
 <div class="print-only" id="printRoot"></div>
 <div class="backdrop hidden" id="entryBackdrop" role="dialog" aria-modal="true" aria-labelledby="entryTitle"><form class="modal" id="entryForm"><h2 id="entryTitle">새 항목</h2><p id="entrySub">과업을 등록합니다.</p><label class="field"><span>명칭 *</span><input id="entryName" maxlength="130" required placeholder="항목명을 입력하세요"></label><label class="field" id="companyWrap"><span>기업명 / 발주처 (선택)</span><input id="entryCompany" maxlength="100" placeholder="예: 업체명 또는 발주처"></label><div id="entryProjectFields" class="project-info-fields"><h3>계약 및 담당자 정보 (선택)</h3><div class="two-col">
@@ -434,7 +442,7 @@ function getInitial(){try{
  }
 }catch(e){}
  try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
-const mobileLayout=()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 1100px), (pointer: coarse) and (max-width: 1500px)').matches;
+const mobileLayout=()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 1100px), (any-pointer: coarse) and (max-width: 1500px)').matches;
 const phonePortrait=()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 700px) and (orientation: portrait)').matches;
 let mapPresentation=phonePortrait()?'list':'graph';
 let collapsedMapBranches=new Set();
@@ -1652,6 +1660,8 @@ function handleGlobalClick(e){const target=e.target;
  $('#mobileMenu').setAttribute('aria-expanded',String(app.classList.contains('show-side')));
  return
  }
+ if(target.closest('#closeMobileMenu')){$('#app').classList.remove('show-side');$('#mobileMenu').setAttribute('aria-expanded','false');return}
+ if(target.closest('#closeInspectorMobile')){setInspectorOpen(false);return}
  if(target.closest('#mobileOverlay')){
   $('#app').classList.remove('show-side','show-inspector');
   setInspectorOpen(false);
@@ -1687,7 +1697,8 @@ function handleGlobalClick(e){const target=e.target;
  if(target.closest('#mapPrintButton')){openMapPrintDialog();return}
  if(target.closest('#printButton')||target.closest('#printInPreview')){window.print();return}
  if(target.closest('#zoomMinus')){zoom=Math.max(55,zoom-10);render();return}
- if(target.closest('#zoomPlus')){zoom=Math.min(125,zoom+10);render();return}
+ if(target.closest('#zoomPlus')){zoom=Math.min(130,zoom+10);render();return}
+ if(target.closest('#zoomReset')){zoom=100;render();return}
 }
 $('#app').addEventListener('click',handleGlobalClick);
 // Two-finger zoom for the connected graph. Normal single-finger scrolling is untouched.
