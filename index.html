@@ -452,6 +452,7 @@
   <label class="field"><span>주요 내용 *</span><textarea id="activityContent" rows="5" maxlength="40000" required placeholder="회의 경과, 협의사항, 주요 요청 및 수행 내용을 작성"></textarea></label>
   <label class="field"><span>결정사항</span><textarea id="activityDecision" rows="3" maxlength="15000" placeholder="확정된 사항 위주로 작성"></textarea></label>
   <label class="field"><span>후속 조치</span><textarea id="activityFollowup" rows="3" maxlength="15000" placeholder="해야 할 일과 확인할 내용"></textarea></label>
+  <label class="field"><span>후속 조치 담당자</span><input id="activityFollowupOwner" maxlength="200" placeholder="예: 김영국 대리 / 외부 담당자"></label>
   <div class="two-col">
    <label class="field"><span>후속 조치 마감</span><input type="date" id="activityFollowupDue"></label>
    <label class="field"><span>후속 조치 상태</span><select id="activityFollowupStatus"><option value="none">후속 조치 없음</option><option value="pending">처리 필요</option><option value="done">처리 완료</option></select></label>
@@ -1190,7 +1191,7 @@ function journalRenderableList(log){
  <p class="journal-entry-path">${esc(p?.businessYear||'연도 미지정')} · ${esc(path.join(' → '))}</p>
  <p class="journal-entry-body">${esc(desc)}${String(log.content||'').length>180?'…':''}</p>
  ${log.decision?`<p class="journal-entry-decision"><b>결정</b> ${esc(String(log.decision).slice(0,170))}</p>`:''}
- ${log.followup?`<p class="journal-entry-followup"><b>후속</b> ${esc(String(log.followup).slice(0,170))} ${log.followup_due?`<span>· 마감 ${esc(log.followup_due)}</span>`:''}</p>`:''}
+ ${log.followup?`<p class="journal-entry-followup"><b>후속</b> ${esc(String(log.followup).slice(0,170))} ${log.followup_owner?'· 담당 '+esc(log.followup_owner)+' ':''}${log.followup_due?`<span>· 마감 ${esc(log.followup_due)}</span>`:''}</p>`:''}
  <div class="journal-entry-actions"><button class="btn" type="button" data-journal-print="${esc(log.id)}">⎙ A4 회의록 인쇄</button>${can?`<button class="btn" type="button" data-journal-edit="${esc(log.id)}">수정</button><button class="btn danger" type="button" data-journal-delete="${esc(log.id)}">삭제</button>`:''}</div>
  </article>`;
 }
@@ -1285,7 +1286,7 @@ function journalOpenEditor(logId=null,preferredNode=null){
  $('#activityNode').disabled=!!existing;
  const fields={activityDate:existing?.record_date||today(),activityTime:String(existing?.record_time||'').slice(0,5),activityKind:existing?.kind||'meeting',
  activityTitle:existing?.title||'',activityPlace:existing?.place||'',activityAttendees:existing?.attendees||'',
- activityContent:existing?.content||'',activityDecision:existing?.decision||'',activityFollowup:existing?.followup||'',
+ activityContent:existing?.content||'',activityDecision:existing?.decision||'',activityFollowup:existing?.followup||'',activityFollowupOwner:existing?.followup_owner||'',
  activityFollowupDue:existing?.followup_due||'',activityFollowupStatus:existing?.followup_status||'none'};
  for(const [key,val] of Object.entries(fields))$('#'+key).value=val;
  $('#activityNeedsReview').checked=!!existing?.needs_review;
@@ -1309,7 +1310,7 @@ async function journalSubmit(){
   project_id:projectId,node_id:nodeId,record_date:$('#activityDate').value,record_time:$('#activityTime').value||null,
   kind:$('#activityKind').value,title:$('#activityTitle').value.trim(),place:$('#activityPlace').value.trim(),
   attendees:$('#activityAttendees').value.trim(),content:$('#activityContent').value.trim(),
-  decision:$('#activityDecision').value.trim(),followup:$('#activityFollowup').value.trim(),
+  decision:$('#activityDecision').value.trim(),followup:$('#activityFollowup').value.trim(),followup_owner:$('#activityFollowupOwner').value.trim(),
   followup_due:$('#activityFollowupDue').value||null,followup_status:$('#activityFollowupStatus').value,
   needs_review:$('#activityNeedsReview').checked
  };
@@ -1408,7 +1409,7 @@ function journalPrintHTML(log){
  </tbody></table>
  <div class="section"><h2>1. 주요 내용</h2><div class="main-content">${journalLines(log.content)}</div></div>
  <div class="section"><h2>2. 결정사항</h2><div class="main-content">${journalLines(log.decision)}</div></div>
- <div class="section"><h2>3. 후속 조치 및 일정</h2><div class="followbox"><div class="main-content">${journalLines(log.followup)}</div><strong>처리기한: ${safe(log.followup_due||'해당 없음')}</strong> <span> / 상태: ${safe(log.followup_status==='done'?'처리 완료':log.followup_status==='pending'?'처리 필요':'해당 없음')}</span></div></div>
+ <div class="section"><h2>3. 후속 조치 및 일정</h2><div class="followbox"><div class="main-content">${journalLines(log.followup)}</div><strong>담당자: ${safe(log.followup_owner||'미지정')}</strong> / <strong>처리기한: ${safe(log.followup_due||'해당 없음')}</strong> <span> / 상태: ${safe(log.followup_status==='done'?'처리 완료':log.followup_status==='pending'?'처리 필요':'해당 없음')}</span></div></div>
  <div class="signature">기록일: ${safe(log.record_date)}　　작성: ${safe(author?.display_name||'')}</div>
  </div></body></html>`;
 }
