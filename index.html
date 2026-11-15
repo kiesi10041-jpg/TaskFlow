@@ -596,6 +596,10 @@
 @media(max-width:700px){.journal-day-preview{font-size:8px;padding:2px 3px}.journal-day-select{gap:3px}.journal-agenda{padding:11px}.journal-agenda-row{gap:6px}.journal-agenda-row>.btn{padding:6px;font-size:10px}}
 @media(max-width:440px){.journal-day-preview{display:none}.journal-calendar-title .btn{font-size:10px}.journal-agenda-kind{font-size:9px}}
 
+.journal-day-project{display:block;max-width:100%;font-size:9px;font-weight:850;color:#395782;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.journal-day-project.due{color:#9b6926}
+.journal-day-project+.journal-day-preview{padding-top:1px;background:transparent;font-size:9px;color:#7083a0}
+@media(max-width:600px){.journal-day-project{font-size:8px}.journal-day-project+.journal-day-preview{display:none}}
+
 </style>
 <style id="checklistPageStyle">@page{size:A4 portrait;margin:10mm}
 </style>
@@ -1436,6 +1440,26 @@ function journalOpenDetail(id){
 }
 function journalCloseDetail(){const m=document.getElementById('journalDetailBackdrop');if(m){m.classList.remove('open');m.innerHTML=''}document.body.style.overflow=''}
 
+
+function journalCalendarGroups(events){
+ const groups=new Map();
+ for(const e of events){
+  const key=String(e.project_id||'unknown')+'|'+(e.kind==='record'?'record':e.kind==='due'?'due':'deadline');
+  if(!groups.has(key))groups.set(key,{project:projects.find(p=>p.id===e.project_id)?.title||'사업 미확인',kind:e.kind,events:[]});
+  groups.get(key).events.push(e);
+ }
+ return [...groups.values()];
+}
+function journalCalendarPreview(events,max=2){
+ const groups=journalCalendarGroups(events),shown=groups.slice(0,max);
+ return shown.map(g=>{
+  const label=g.kind==='record'?'기록':g.kind==='due'?'후속':'마감';
+  const first=g.events[0];
+  const title=g.kind==='record'?first.label.replace(/^.*? · /,''):first.label;
+  return `<span class="journal-day-project ${g.kind}">${esc(g.project)} · ${label} ${g.events.length}건</span><span class="journal-day-preview ${g.kind}">${esc(title)}${g.events.length>1?' 외 '+(g.events.length-1)+'건':''}</span>`;
+ }).join('')+(groups.length>max?`<span class="journal-day-overflow">다른 사업·유형 ${groups.length-max}개 더보기</span>`:'');
+}
+
 function journalEventSummary(ev){
  const p=projects.find(x=>x.id===ev.project_id);
  return (p?.title?p.title+' · ':'')+ev.label;
@@ -1454,44 +1478,57 @@ function journalDateAgenda(date,records){
 }
 function journalPrintMonth(){
  const [y,m]=journalMonth.split('-').map(Number),last=new Date(y,m,0).getDate(),first=new Date(y,m-1,1).getDay(),records=journalVisibleRecords();
- const rows=[],cells=[];
- for(let i=0;i<Math.ceil((first+last)/7)*7;i++){
+ const weekCount=Math.ceil((first+last)/7),rows=[],cells=[];
+ for(let i=0;i<weekCount*7;i++){
   const day=i-first+1,valid=day>=1&&day<=last;
-  const dateObj=new Date(y,m-1,day),date=dateObj.getFullYear()+'-'+String(dateObj.getMonth()+1).padStart(2,'0')+'-'+String(dateObj.getDate()).padStart(2,'0');
-  const events=journalDateEvents(date,records);
-  cells.push(`<div class="calday ${valid?'':'outside'}"><strong>${dateObj.getDate()}</strong>${events.slice(0,3).map(e=>`<span class="calitem ${e.kind}">${esc(e.kind==='record'?e.label.replace(/^.*? · /,''):e.label)}</span>`).join('')}${events.length>3?`<small>외 ${events.length-3}건</small>`:''}</div>`);
+  const actual=new Date(y,m-1,day),date=actual.getFullYear()+'-'+String(actual.getMonth()+1).padStart(2,'0')+'-'+String(actual.getDate()).padStart(2,'0');
+  const events=valid?journalDateEvents(date,records):[];
+  const groups=journalCalendarGroups(events),top=groups.slice(0,2);
+  cells.push(`<div class="calday ${valid?'':'outside'}"><strong>${actual.getDate()}</strong>
+  ${top.map(g=>`<div class="calitem ${g.kind}"><b>${esc(g.project)}</b><span>${esc(g.kind==='record'?'기록':g.kind==='due'?'후속':'마감')} ${g.events.length}건 · ${esc((g.kind==='record'?g.events[0].label.replace(/^.*? · /,''):g.events[0].label).slice(0,42))}</span></div>`).join('')}
+  ${groups.length>2?`<small>다른 사업·유형 ${groups.length-2}개 (상세표 참조)</small>`:''}</div>`);
  }
  for(let d=1;d<=last;d++){
   const date=journalMonth+'-'+String(d).padStart(2,'0');
   for(const e of journalDateEvents(date,records)){
    const project=projects.find(p=>p.id===e.project_id)?.title||'사업 미확인';
-   rows.push(`<tr><td>${esc(date)}</td><td>${esc(e.kind==='record'?'업무기록':e.kind==='due'?'후속 마감':e.kind==='project'?'사업 마감':'과업 마감')}</td><td>${esc(project)}</td><td>${esc(e.kind==='record'?e.label.replace(/^.*? · /,''):e.label)}</td></tr>`);
+   const record=records.find(x=>String(x.id)===String(e.id));
+   const label=e.kind==='record'?'업무기록':e.kind==='due'?'후속 마감':e.kind==='project'?'사업 마감':'과업 마감';
+   const detail=e.kind==='due'&&record?'원본 기록일 '+record.record_date+' · '+(record.followup||record.title):e.kind==='record'?e.label.replace(/^.*? · /,''):e.label;
+   rows.push(`<tr><td>${esc(date)}</td><td>${esc(label)}</td><td>${esc(project)}</td><td>${esc(detail)}</td></tr>`);
   }
  }
- const popup=window.open('','_blank');
- if(!popup){notify('인쇄창이 차단되었습니다. 브라우저 팝업 허용 여부를 확인해 주세요.');return}
+ const popup=window.open('','_blank');if(!popup){notify('팝업이 차단되었습니다. 브라우저에서 인쇄창을 허용해 주세요.');return}
  popup.document.open();
  popup.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(journalMonth)} 업무기록 및 일정</title><style>
- @page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}
- body{font:11px/1.5 "Malgun Gothic",sans-serif;color:#23334e;margin:0;padding:20px}
- h1{font-size:20px;margin:0 0 4px}p{color:#64748b;margin:0 0 14px}
- .calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid #d9e0eb;border-left:1px solid #d9e0eb}
- .weekday{background:#eef2f8;text-align:center;font-weight:bold;padding:5px;border-right:1px solid #d9e0eb;border-bottom:1px solid #d9e0eb}
- .weekday:first-child{color:#c44c54}.weekday:nth-child(7){color:#3561bc}
- .calday{min-width:0;min-height:80px;padding:5px;border-right:1px solid #d9e0eb;border-bottom:1px solid #d9e0eb;overflow:hidden}
- .calday.outside{background:#f7f8fb;color:#9ba7bb}.calday strong{font-size:11px;display:block;margin-bottom:4px}
- .calitem{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:3px;background:#edf2fd;padding:2px 3px;font-size:9px;margin-bottom:3px}
- .calitem.due{background:#fff0dc;color:#946021}.calitem.project,.calitem.task{background:#f5ecfa;color:#7f509c}
- .calday small{font-size:9px;color:#7889a0}
- h2{font-size:16px;margin:0 0 9px}.appendix{break-before:page;margin-top:15px}
- table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:7px;border:1px solid #d9e0eb;text-align:left;vertical-align:top;overflow-wrap:anywhere}
- th{background:#eef2f8}th:nth-child(1){width:15%}th:nth-child(2){width:13%}th:nth-child(3){width:24%}
- tr{break-inside:avoid}.toolbar{margin-bottom:20px}.toolbar button{padding:9px 16px;background:#4065ec;color:white;border:0;border-radius:6px;cursor:pointer}
- @media print{body{padding:0}.toolbar{display:none}thead{display:table-header-group}}
- </style></head><body><div class="toolbar"><button onclick="window.print()">A4 인쇄 / PDF 저장</button></div>
- <h1>${esc(journalMonth)} 업무기록·일정 현황</h1><p>선택한 사업·연도·과업 범위 · 총 ${rows.length}개 일정 (업무기록 작성일과 후속 조치 마감일 구분)</p>
- <section class="calendar">${['일','월','화','수','목','금','토'].map(d=>`<div class="weekday">${d}</div>`).join('')}${cells.join('')}</section>
- <section class="appendix"><h2>일자별 상세 일정 목록</h2><table><thead><tr><th>일자</th><th>유형</th><th>사업명</th><th>주요 내용</th></tr></thead><tbody>${rows.join('')||'<tr><td colspan="4">해당 월의 일정이 없습니다.</td></tr>'}</tbody></table></section></body></html>`);
+ @page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}
+ html,body{margin:0;color:#23334e;font:10pt/1.4 "Malgun Gothic","Apple SD Gothic Neo",sans-serif;background:white}
+ .toolbar{padding:10px;background:#eff3f9;text-align:center}.toolbar button{padding:9px 15px;background:#4065ec;color:white;border:0;border-radius:6px;cursor:pointer}
+ .printpage{width:277mm;min-height:190mm;margin:0 auto;break-after:page;page-break-after:always;overflow:hidden}
+ .printpage h1{font-size:19pt;margin:0 0 3mm}.subtitle{color:#63758d;font-size:9pt;margin:0 0 5mm}
+ .calendar{width:100%;height:164mm;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-template-rows:8mm repeat(${weekCount},minmax(0,1fr));border-left:1px solid #d9e0eb;border-top:1px solid #d9e0eb}
+ .weekday{text-align:center;font-size:9pt;font-weight:750;background:#f1f4fa;padding:1.5mm;border-right:1px solid #d9e0eb;border-bottom:1px solid #d9e0eb}
+ .weekday:first-child{color:#c34d59}.weekday:nth-child(7){color:#3563bc}
+ .calday{min-width:0;min-height:0;overflow:hidden;border-right:1px solid #d9e0eb;border-bottom:1px solid #d9e0eb;padding:1.5mm}
+ .calday.outside{color:#a1adbf;background:#f8f9fc}.calday>strong{display:block;font-size:10pt;line-height:1.1;margin-bottom:1.5mm}
+ .calitem{font-size:7.3pt;padding:1mm;background:#eef3fb;border-radius:2px;margin-bottom:1mm;max-height:13mm;overflow:hidden}
+ .calitem b,.calitem span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.calitem b{color:#304d84}
+ .calitem.due{background:#fff2df}.calitem.due b{color:#976322}
+ .calday small{display:block;font-size:6.5pt;color:#687990}
+ .appendix{break-before:page;page-break-before:always;padding-top:2mm}
+ .appendix h2{font-size:16pt;margin:0 0 3mm}.appendix p{color:#687990;font-size:9pt;margin:0 0 5mm}
+ table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9pt}
+ th,td{border:1px solid #d9e0eb;padding:2mm 2.5mm;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+ th{background:#f1f4fa}th:nth-child(1){width:15%}th:nth-child(2){width:13%}th:nth-child(3){width:26%}
+ tr{break-inside:avoid;page-break-inside:avoid}thead{display:table-header-group}
+ @media screen{.printpage{margin:14px auto;border:1px solid #dce3ed;box-shadow:0 4px 15px #0001;padding:0}}
+ @media print{.toolbar{display:none}.printpage{margin:0;width:277mm;height:190mm;min-height:190mm}.appendix{padding-top:0}}
+ </style></head><body><div class="toolbar"><button onclick="window.print()">A4 가로 인쇄 / PDF 저장</button></div>
+ <section class="printpage"><h1>${esc(y+'년 '+m+'월')} 업무기록·일정 현황</h1>
+ <p class="subtitle">월간 달력 · 사업별 업무기록 및 마감 일정 · 상세 내용은 다음 페이지에서 확인</p>
+ <div class="calendar">${['일','월','화','수','목','금','토'].map(d=>`<div class="weekday">${d}</div>`).join('')}${cells.join('')}</div></section>
+ <section class="appendix"><h2>${esc(y+'년 '+m+'월')} 일자별 상세 일정</h2><p>사업별 전체 일정 ${rows.length}건 · 작성일과 후속 마감일을 구분해 기록</p>
+ <table><thead><tr><th>일자</th><th>유형</th><th>사업명</th><th>주요 내용</th></tr></thead><tbody>${rows.join('')||'<tr><td colspan="4">등록된 일정이 없습니다.</td></tr>'}</tbody></table></section></body></html>`);
  popup.document.close();popup.focus();
 }
 
@@ -1542,7 +1579,7 @@ function renderJournal(){
   const events=journalDateEvents(date,records);
   const recordCount=records.filter(r=>r.record_date===date).length;
   const dueCount=events.filter(r=>r.kind==='due').length,taskCount=events.filter(r=>r.kind==='project'||r.kind==='task').length;
-  return `<button type="button" data-journal-day="${date}" class="journal-day journal-day-select ${valid?'':'outside'} ${weekday===0?'weekend-sun':weekday===6?'weekend-sat':''} ${date===today()?'today':''} ${journalSelectedDate===date?'selected':''}" aria-label="${date} 기록 ${recordCount}건, 후속 마감 ${dueCount}건, 과업 마감 ${taskCount}건"><span class="journal-day-number">${realDate.getDate()}</span>${recordCount?`<span class="journal-day-count">기록 ${recordCount}건</span>`:''}${dueCount?`<span class="journal-day-mini due">후속 ${dueCount}건</span>`:''}${taskCount?`<span class="journal-day-mini task">마감 ${taskCount}건</span>`:''}${events.slice(0,2).map(e=>`<span class="journal-day-preview ${e.kind}">${esc(e.kind==='record'?e.label.replace(/^.*? · /,''):e.label)}</span>`).join('')}${events.length>2?`<span class="journal-day-overflow">외 ${events.length-2}건</span>`:''}</button>`;
+  return `<button type="button" data-journal-day="${date}" class="journal-day journal-day-select ${valid?'':'outside'} ${weekday===0?'weekend-sun':weekday===6?'weekend-sat':''} ${date===today()?'today':''} ${journalSelectedDate===date?'selected':''}" aria-label="${date} 기록 ${recordCount}건, 후속 마감 ${dueCount}건, 과업 마감 ${taskCount}건"><span class="journal-day-number">${realDate.getDate()}</span>${recordCount?`<span class="journal-day-count">기록 ${recordCount}건</span>`:''}${dueCount?`<span class="journal-day-mini due">후속 ${dueCount}건</span>`:''}${taskCount?`<span class="journal-day-mini task">마감 ${taskCount}건</span>`:''}${journalCalendarPreview(events,2)}</button>`;
  }).join('');
  let listed=records.filter(log=>{
   if(journalFilter==='review')return log.needs_review||log.followup_status==='pending';
