@@ -1453,8 +1453,14 @@ function journalDateAgenda(date,records){
  }).join('')||'<p class="journal-agenda-empty">등록된 업무기록이나 마감 일정이 없습니다.</p>';
 }
 function journalPrintMonth(){
- const [y,m]=journalMonth.split('-').map(Number),last=new Date(y,m,0).getDate(),records=journalVisibleRecords();
- const rows=[];
+ const [y,m]=journalMonth.split('-').map(Number),last=new Date(y,m,0).getDate(),first=new Date(y,m-1,1).getDay(),records=journalVisibleRecords();
+ const rows=[],cells=[];
+ for(let i=0;i<Math.ceil((first+last)/7)*7;i++){
+  const day=i-first+1,valid=day>=1&&day<=last;
+  const dateObj=new Date(y,m-1,day),date=dateObj.getFullYear()+'-'+String(dateObj.getMonth()+1).padStart(2,'0')+'-'+String(dateObj.getDate()).padStart(2,'0');
+  const events=journalDateEvents(date,records);
+  cells.push(`<div class="calday ${valid?'':'outside'}"><strong>${dateObj.getDate()}</strong>${events.slice(0,3).map(e=>`<span class="calitem ${e.kind}">${esc(e.kind==='record'?e.label.replace(/^.*? · /,''):e.label)}</span>`).join('')}${events.length>3?`<small>외 ${events.length-3}건</small>`:''}</div>`);
+ }
  for(let d=1;d<=last;d++){
   const date=journalMonth+'-'+String(d).padStart(2,'0');
   for(const e of journalDateEvents(date,records)){
@@ -1466,16 +1472,26 @@ function journalPrintMonth(){
  if(!popup){notify('인쇄창이 차단되었습니다. 브라우저 팝업 허용 여부를 확인해 주세요.');return}
  popup.document.open();
  popup.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(journalMonth)} 업무기록 및 일정</title><style>
- @page{size:A4 landscape;margin:13mm}*{box-sizing:border-box}
- body{font:11px/1.6 "Malgun Gothic",sans-serif;color:#23334e;margin:0;padding:20px}
- h1{font-size:20px;margin:0 0 4px}p{color:#64748b;margin:0 0 18px}
- table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:8px;border:1px solid #d9e0eb;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+ @page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}
+ body{font:11px/1.5 "Malgun Gothic",sans-serif;color:#23334e;margin:0;padding:20px}
+ h1{font-size:20px;margin:0 0 4px}p{color:#64748b;margin:0 0 14px}
+ .calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid #d9e0eb;border-left:1px solid #d9e0eb}
+ .weekday{background:#eef2f8;text-align:center;font-weight:bold;padding:5px;border-right:1px solid #d9e0eb;border-bottom:1px solid #d9e0eb}
+ .weekday:first-child{color:#c44c54}.weekday:nth-child(7){color:#3561bc}
+ .calday{min-width:0;min-height:80px;padding:5px;border-right:1px solid #d9e0eb;border-bottom:1px solid #d9e0eb;overflow:hidden}
+ .calday.outside{background:#f7f8fb;color:#9ba7bb}.calday strong{font-size:11px;display:block;margin-bottom:4px}
+ .calitem{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:3px;background:#edf2fd;padding:2px 3px;font-size:9px;margin-bottom:3px}
+ .calitem.due{background:#fff0dc;color:#946021}.calitem.project,.calitem.task{background:#f5ecfa;color:#7f509c}
+ .calday small{font-size:9px;color:#7889a0}
+ h2{font-size:16px;margin:0 0 9px}.appendix{break-before:page;margin-top:15px}
+ table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:7px;border:1px solid #d9e0eb;text-align:left;vertical-align:top;overflow-wrap:anywhere}
  th{background:#eef2f8}th:nth-child(1){width:15%}th:nth-child(2){width:13%}th:nth-child(3){width:24%}
  tr{break-inside:avoid}.toolbar{margin-bottom:20px}.toolbar button{padding:9px 16px;background:#4065ec;color:white;border:0;border-radius:6px;cursor:pointer}
  @media print{body{padding:0}.toolbar{display:none}thead{display:table-header-group}}
  </style></head><body><div class="toolbar"><button onclick="window.print()">A4 인쇄 / PDF 저장</button></div>
- <h1>${esc(journalMonth)} 업무기록·일정 현황</h1><p>현재 선택한 사업·연도·과업 범위의 날짜별 업무기록 및 마감 일정 · 총 ${rows.length}항목</p>
- <table><thead><tr><th>일자</th><th>유형</th><th>사업명</th><th>주요 내용</th></tr></thead><tbody>${rows.join('')||'<tr><td colspan="4">해당 월의 일정이 없습니다.</td></tr>'}</tbody></table></body></html>`);
+ <h1>${esc(journalMonth)} 업무기록·일정 현황</h1><p>선택한 사업·연도·과업 범위 · 총 ${rows.length}개 일정 (업무기록 작성일과 후속 조치 마감일 구분)</p>
+ <section class="calendar">${['일','월','화','수','목','금','토'].map(d=>`<div class="weekday">${d}</div>`).join('')}${cells.join('')}</section>
+ <section class="appendix"><h2>일자별 상세 일정 목록</h2><table><thead><tr><th>일자</th><th>유형</th><th>사업명</th><th>주요 내용</th></tr></thead><tbody>${rows.join('')||'<tr><td colspan="4">해당 월의 일정이 없습니다.</td></tr>'}</tbody></table></section></body></html>`);
  popup.document.close();popup.focus();
 }
 
