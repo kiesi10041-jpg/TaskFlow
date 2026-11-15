@@ -16,6 +16,7 @@ create table if not exists public.taskflow_activity_logs (
  content text not null default '' check (char_length(content)<=40000),
  decision text not null default '' check (char_length(decision)<=15000),
  followup text not null default '' check (char_length(followup)<=15000),
+ followup_owner text not null default '' check (char_length(followup_owner)<=200),
  followup_due date,
  followup_status text not null default 'none' check (followup_status in ('none','pending','done')),
  needs_review boolean not null default false,
@@ -25,6 +26,10 @@ create table if not exists public.taskflow_activity_logs (
  created_at timestamptz not null default now(),
  updated_at timestamptz not null default now()
 );
+-- Safe addition when upgrading a database where 3.3 was partially applied.
+alter table public.taskflow_activity_logs
+ add column if not exists followup_owner text not null default '';
+
 create index if not exists tf_activity_project_date_idx
  on public.taskflow_activity_logs(project_id,record_date desc,created_at desc);
 create index if not exists tf_activity_node_idx
