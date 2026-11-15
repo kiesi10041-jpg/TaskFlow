@@ -613,7 +613,7 @@ function renderMapGraph(){
  return `<div class="map-pane" id="mapPane">
    <div class="floating-help">카드를 눌러 담당자·전체 제목을 확인하고 ＋로 하위 단계를 추가하세요. 화면을 끌어 상하좌우로 이동할 수 있습니다.</div>
    <div class="map-scroll"><div class="graph" id="graph" style="width:${width}px;height:${height}px;zoom:${zoom}%"><svg viewBox="0 0 ${width} ${height}" aria-hidden="true">${lines}</svg>${html}</div></div>
-   <button type="button" class="map-home-btn" id="mapHome" title="구조도 시작 지점으로 이동">⌂ 처음으로</button>
+   <button type="button" class="map-home-btn" id="mapHome" title="사업 / 기업 카드로 이동">⌂ 사업 시작점</button>
  </div>`;
 }
 function substep(n,depth=0){
@@ -1675,7 +1675,14 @@ function handleGlobalClick(e){const target=e.target;
   if(collapsedMapBranches.has(key))collapsedMapBranches.delete(key);else collapsedMapBranches.add(key);
   render();return
  }
- if(target.closest('#mapHome')){const pane=$('#mapPane');if(pane){pane.scrollLeft=0;pane.scrollTop=0}return}
+ if(target.closest('#mapHome')){
+  const pane=$('#mapPane'),root=pane?.querySelector('.graph-node.root');
+  if(pane){
+   pane.scrollLeft=0;
+   pane.scrollTop=root?Math.max(0,((root.offsetTop+root.offsetHeight/2)*zoom/100)-pane.clientHeight/2):0;
+  }
+  return
+ }
  if(target.closest('#mapCollapseAll')){const crawl=(n)=>{if((n.children||[]).length)collapsedMapBranches.add(n.id);(n.children||[]).forEach(crawl)};if(current())crawl(current());render();return}
  if(target.closest('#mapExpandAll')){collapsedMapBranches.clear();render();return}
  if(target.closest('#teamRecoveryDownload')){try{teamDownloadRecovery()}catch(e){notify(e.message)}return}
