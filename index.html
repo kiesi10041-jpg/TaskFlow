@@ -443,10 +443,10 @@ function getInitial(){try{
 }catch(e){}
  try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
 const mobileLayout=()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 1100px), (any-pointer: coarse) and (max-width: 1500px)').matches;
-const phonePortrait=()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 700px) and (orientation: portrait)').matches;
+const phonePortrait=()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 700px), (any-pointer: coarse) and (max-width: 1100px) and (orientation: portrait)').matches;
 let mapPresentation=phonePortrait()?'list':'graph';
 let collapsedMapBranches=new Set();
-let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=85,query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
+let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=(mobileLayout()?100:85),query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
 let team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],invites:[],handovers:[],handoverReady:false,audit:new Map(),base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
 let refreshInFlight=null,authNeedsRelogin=false;
 let cloudReady=false;let cfg=(()=>{try{return JSON.parse(localStorage.getItem(SETTINGS_KEY))||{}}catch(e){return {}}})();let session=(()=>{try{return JSON.parse(localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY))||null}catch(e){return null}})();
@@ -1668,8 +1668,8 @@ function handleGlobalClick(e){const target=e.target;
   $('#mobileMenu').setAttribute('aria-expanded','false');
   return
  }
- if(target.closest('#mapShowGraph')){mapPresentation='graph';render();return}
- if(target.closest('#mapShowList')){mapPresentation='list';render();return}
+ if(target.closest('#mapShowGraph')){mapPresentation='graph';render();const pane=$('#mapPane');if(pane){pane.scrollTop=0;pane.scrollLeft=0}return}
+ if(target.closest('#mapShowList')){mapPresentation='list';render();const pane=$('#mapPane');if(pane){pane.scrollTop=0;pane.scrollLeft=0}return}
  if(target.closest('[data-map-branch]')){
   const key=target.closest('[data-map-branch]').dataset.mapBranch;
   if(collapsedMapBranches.has(key))collapsedMapBranches.delete(key);else collapsedMapBranches.add(key);
