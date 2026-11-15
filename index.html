@@ -230,8 +230,9 @@
  <button class="side-new" id="newProject">＋ 새 사업 등록</button>
  <div class="sidebottom"><button class="sidebutton admin-bottom" id="adminMenu" data-view="admin" type="button"><span>⚙</span> 관리자 설정</button><i id="savedDot" class="hidden" aria-hidden="true"></i><span id="saveLabel" class="hidden" aria-hidden="true">기기에 저장됨</span><input type="file" accept=".json,application/json" id="importFile" class="hidden"></div>
 </aside>
-<main class="primaryarea"><header class="topbar"><div style="display:flex;gap:10px;align-items:center;min-width:0"><button class="btn mobile-menu" id="mobileMenu" aria-label="사업 목록 열기">☰</button><div style="min-width:0"><div class="eyebrow" id="pageEyebrow">PROJECT MANAGEMENT</div><h1 class="pagetitle" id="pageTitle">전체 사업 현황</h1><div class="pagesub" id="pageSub">사업을 선택하면 연결형 과업도를 볼 수 있습니다.</div></div></div><div class="topstats"><div class="topstat"><strong id="doneNum">0</strong><small>완료 단계</small></div><div class="topstat"><strong id="totalNum">0</strong><small>전체 단계</small></div><div class="topstat"><strong id="progressNum">0%</strong><small>진행률</small></div></div></header>
- <div class="toolbar"><div class="tabs"><button class="tab" id="tabDashboard" data-view="dashboard">전체 사업</button><button class="tab" id="tabMap" data-view="map">연결형 구조도</button><button class="tab" id="tabDetail" data-view="detail">세부 진행단계</button><button class="tab" id="tabPaper" data-view="print">A4 출력</button></div><span class="spacer"></span><div class="zoombox hidden" id="zoomTools"><button id="zoomMinus" aria-label="축소">−</button><span id="zoomValue">85%</span><button id="zoomPlus" aria-label="확대">＋</button></div><button class="btn" id="editInspector">✎ 항목 편집</button><button class="btn" type="button" id="duplicateCurrent">⧉ 사업 복제</button><button class="btn" id="mapPrintButton" type="button">⎙ 구조도 인쇄 · A4/A3</button><button class="btn primary" id="printButton">⎙ 체크리스트 인쇄</button></div>
+<button class="mobile-overlay" id="mobileOverlay" type="button" aria-label="사업 목록 또는 상세 패널 닫기"></button>
+<main class="primaryarea"><header class="topbar"><div style="display:flex;gap:10px;align-items:center;min-width:0"><button class="btn mobile-menu" id="mobileMenu" aria-label="사업 목록 열기" aria-expanded="false">☰</button><div style="min-width:0"><div class="eyebrow" id="pageEyebrow">PROJECT MANAGEMENT</div><h1 class="pagetitle" id="pageTitle">전체 사업 현황</h1><div class="pagesub" id="pageSub">사업을 선택하면 연결형 과업도를 볼 수 있습니다.</div></div></div><div class="topstats"><div class="topstat"><strong id="doneNum">0</strong><small>완료 단계</small></div><div class="topstat"><strong id="totalNum">0</strong><small>전체 단계</small></div><div class="topstat"><strong id="progressNum">0%</strong><small>진행률</small></div></div></header>
+ <div class="toolbar"><div class="tabs"><button class="tab" id="tabDashboard" data-view="dashboard">전체 사업</button><button class="tab" id="tabMap" data-view="map">연결형 구조도</button><button class="tab" id="tabDetail" data-view="detail">세부 진행단계</button><button class="tab" id="tabPaper" data-view="print">A4 출력</button></div><span class="spacer"></span><div class="mobile-map-switch hidden" id="mapViewSwitch" role="group" aria-label="과업도 표시 방식"><button class="btn" type="button" id="mapShowGraph">연결도</button><button class="btn" type="button" id="mapShowList">목록 보기</button></div><div class="zoombox hidden" id="zoomTools"><button id="zoomMinus" aria-label="축소">−</button><span id="zoomValue">85%</span><button id="zoomPlus" aria-label="확대">＋</button></div><button class="btn" id="editInspector">✎ 항목 편집</button><button class="btn" type="button" id="duplicateCurrent">⧉ 사업 복제</button><button class="btn" id="mapPrintButton" type="button">⎙ 구조도 인쇄 · A4/A3</button><button class="btn primary" id="printButton">⎙ 체크리스트 인쇄</button></div>
  <section class="content" id="content"></section>
 </main>
 <aside class="inspector" id="inspector"><div class="inspector-body" id="inspectorBody"></div></aside>
@@ -322,6 +323,10 @@ function getInitial(){try{
  }
 }catch(e){}
  try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
+const mobileLayout=()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 1100px), (pointer: coarse) and (max-width: 1500px)').matches;
+const phonePortrait=()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 700px) and (orientation: portrait)').matches;
+let mapPresentation=phonePortrait()?'list':'graph';
+let collapsedMapBranches=new Set();
 let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=85,query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
 let team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],invites:[],handovers:[],handoverReady:false,audit:new Map(),base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
 let refreshInFlight=null,authNeedsRelogin=false;
@@ -342,10 +347,26 @@ function mutate(){save();render()}
 function notify(str){const el=$('#toast');el.textContent=str;el.classList.remove('hidden');clearTimeout(savedTimer);savedTimer=setTimeout(()=>el.classList.add('hidden'),2600)}
 function setProject(id,next='map'){if(!projects.some(p=>p.id===id))return;currentProjectId=id;selectedId=id;focusId=allWork(current())[0]?.work.id||null;view=next;query='';$('#app').classList.remove('show-side');render()}
 function changeView(to){if(to!=='dashboard'&&to!=='admin'&&!current()){view='dashboard'}else view=to;if(view==='admin')setInspectorOpen(false);if(view==='detail'&&(!focusId||!findNode(focusId)))focusId=allWork(current())[0]?.work.id||null;$('#app').classList.remove('show-side');render()}
-function setInspectorOpen(open){const app=$('#app');app.classList.toggle('inspector-closed',!open);app.classList.toggle('show-inspector',!!open);const btn=$('#editInspector');if(btn){btn.textContent=open?'✕ 패널 닫기':'✎ 항목 편집';btn.setAttribute('aria-expanded',String(!!open))}}
+function setInspectorOpen(open){
+ const app=$('#app');
+ if(mobileLayout()){
+  app.classList.toggle('show-inspector',!!open);
+  app.classList.toggle('inspector-closed',!open);
+  if(open)app.classList.remove('show-side');
+ }else{
+  app.classList.toggle('inspector-closed',!open);
+  app.classList.toggle('show-inspector',!!open);
+ }
+ const btn=$('#editInspector');
+ if(btn){btn.textContent=open?'✕ 상세 닫기':'✎ 항목 편집';btn.setAttribute('aria-expanded',String(!!open))}
+}
 function titleFor(){return {admin:team.active&&!teamIsManager()?'내 계정·팀 정보':'관리자 설정',dashboard:'전체 사업 통합 현황',map:current()?.title||'연결형 과업도',detail:current()?.title||'세부 진행단계',print:current()?.title||'A4 출력 체크시트'}[view]}
 function renderSidebar(){const p=current();$('#newProject').classList.toggle('hidden',!teamCanCreateProject());$('#sideCount').textContent=projects.length;$('#allProjectButton').classList.toggle('active',view==='dashboard');$('#adminMenu').classList.toggle('active',view==='admin');$('#adminMenu').innerHTML=(team.active&&!teamIsManager()?'<span>◉</span> 내 계정·팀 정보':'<span>⚙</span> 관리자 설정');$('#projectList').innerHTML=projects.map(x=>{const d=projectDeadlineState(x);return `<button class="project-nav ${x.id===p?.id&&view!=='dashboard'&&view!=='admin'?'active':''}" data-project="${esc(x.id)}"><i class="dot"></i><span class="navname">${esc(x.title)}<small>${allWork(x).length}개 세부과업 · ${rate(x)}% 완료</small><span class="sidebar-project-due ${d.kind}">${esc(d.label)}${x.deadline?' · '+esc(x.deadline.slice(5).replace('-','.')):''}</span></span></button>`}).join('')}
-function renderHead(){const p=current(),s=(view==='dashboard'||view==='admin')?aggregate():stats(p);$('#pageEyebrow').textContent=view==='admin'?'PERSONAL ADMIN':view==='dashboard'?'PORTFOLIO OVERVIEW':view==='map'?'CONNECTED TASK MAP':view==='detail'?'WORKSTREAM PROGRESS':'A4 CHECKLIST';$('#pageTitle').textContent=titleFor();$('#pageSub').textContent=view==='admin'?'계정과 클라우드 저장 상태를 관리합니다.':view==='dashboard'?'전체 사업의 계약정보, 마감상태와 과업 진행률을 확인합니다.':view==='map'?'사업 → 지원항목 → 세부과업 → 실행단계가 선으로 연결됩니다.':view==='detail'?'세부과업을 선택하여 실행단계를 순서대로 관리합니다.':'현재 선택한 사업의 세부과업을 A4 가로 형식으로 출력합니다.';if(view==='map'&&p){const d=projectDeadlineState(p);$('#pageSub').textContent=['계약 '+(p.contractDate||'미입력'),'마감 '+(p.deadline||'미입력'),'PM '+(p.projectManager||'미입력'),d.label].join('  ·  ')}if(team.active&&view==='dashboard')$('#pageSub').textContent=team.workspace.name+' · 전체 프로젝트 및 팀원별 업무 진행현황';$('#doneNum').textContent=s.done;$('#totalNum').textContent=s.total;$('#progressNum').textContent=s.total?Math.round(100*s.done/s.total)+'%':'0%';for(const name of ['Dashboard','Map','Detail','Paper'])$('#tab'+name).classList.toggle('active',view===({Dashboard:'dashboard',Map:'map',Detail:'detail',Paper:'print'}[name]));$('.toolbar .tabs').classList.toggle('hidden',view==='admin');$('#zoomTools').classList.toggle('hidden',view!=='map');$('#zoomValue').textContent=zoom+'%';$('#editInspector').classList.toggle('hidden',view==='dashboard'||view==='admin');const inspectorVisible=window.innerWidth<=970?$('#app').classList.contains('show-inspector'):!$('#app').classList.contains('inspector-closed');$('#editInspector').textContent=inspectorVisible?'✕ 패널 닫기':'✎ 항목 편집';$('#editInspector').setAttribute('aria-expanded',String(inspectorVisible));$('#duplicateCurrent').classList.toggle('hidden',view==='dashboard'||view==='admin'||!teamCanCreateProject());$('#mapPrintButton').classList.toggle('hidden',view!=='map');$('#printButton').classList.toggle('hidden',view==='dashboard'||view==='admin')}
+function renderHead(){const p=current(),s=(view==='dashboard'||view==='admin')?aggregate():stats(p);$('#pageEyebrow').textContent=view==='admin'?'PERSONAL ADMIN':view==='dashboard'?'PORTFOLIO OVERVIEW':view==='map'?'CONNECTED TASK MAP':view==='detail'?'WORKSTREAM PROGRESS':'A4 CHECKLIST';$('#pageTitle').textContent=titleFor();$('#pageSub').textContent=view==='admin'?'계정과 클라우드 저장 상태를 관리합니다.':view==='dashboard'?'전체 사업의 계약정보, 마감상태와 과업 진행률을 확인합니다.':view==='map'?'사업 → 지원항목 → 세부과업 → 실행단계가 선으로 연결됩니다.':view==='detail'?'세부과업을 선택하여 실행단계를 순서대로 관리합니다.':'현재 선택한 사업의 세부과업을 A4 가로 형식으로 출력합니다.';if(view==='map'&&p){const d=projectDeadlineState(p);$('#pageSub').textContent=['계약 '+(p.contractDate||'미입력'),'마감 '+(p.deadline||'미입력'),'PM '+(p.projectManager||'미입력'),d.label].join('  ·  ')}if(team.active&&view==='dashboard')$('#pageSub').textContent=team.workspace.name+' · 전체 프로젝트 및 팀원별 업무 진행현황';$('#doneNum').textContent=s.done;$('#totalNum').textContent=s.total;$('#progressNum').textContent=s.total?Math.round(100*s.done/s.total)+'%':'0%';for(const name of ['Dashboard','Map','Detail','Paper'])$('#tab'+name).classList.toggle('active',view===({Dashboard:'dashboard',Map:'map',Detail:'detail',Paper:'print'}[name]));$('.toolbar .tabs').classList.toggle('hidden',view==='admin');$('#mapViewSwitch').classList.toggle('hidden',view!=='map');
+ $('#mapShowGraph').classList.toggle('active',mapPresentation==='graph');
+ $('#mapShowList').classList.toggle('active',mapPresentation==='list');
+ $('#zoomTools').classList.toggle('hidden',view!=='map'||mapPresentation==='list');
+ $('#zoomValue').textContent=zoom+'%';$('#editInspector').classList.toggle('hidden',view==='dashboard'||view==='admin');const inspectorVisible=mobileLayout()?$('#app').classList.contains('show-inspector'):!$('#app').classList.contains('inspector-closed');$('#editInspector').textContent=inspectorVisible?'✕ 패널 닫기':'✎ 항목 편집';$('#editInspector').setAttribute('aria-expanded',String(inspectorVisible));$('#duplicateCurrent').classList.toggle('hidden',view==='dashboard'||view==='admin'||!teamCanCreateProject());$('#mapPrintButton').classList.toggle('hidden',view!=='map');$('#printButton').classList.toggle('hidden',view==='dashboard'||view==='admin')}
 function portfolioStatusData(){
  const s=aggregate(),total=s.total,done=s.done,doing=s.doing,blocked=s.blocked;
  const todo=Math.max(0,total-done-doing-blocked),incomplete=total-done;
@@ -1469,8 +1490,28 @@ function handleGlobalClick(e){const target=e.target;
  if(target.closest('#cloudPush')){cloudAction(async()=>{if(team.active){await teamFlush()}else{await renewSession();if(!confirm('현재 기기의 사업을 클라우드에 저장합니다. 기존 데이터가 덮어써질 수 있습니다. 계속할까요?'))return;await pushCloud();render()}});return}
  if(target.closest('#saveNode')){saveEdit();return}
  if(target.closest('#closeInspector')){setInspectorOpen(false);return}
- if(target.closest('#editInspector')){const isOpen=window.innerWidth<=970?$('#app').classList.contains('show-inspector'):!$('#app').classList.contains('inspector-closed');setInspectorOpen(!isOpen);return}
- if(target.closest('#mobileMenu')){$('#app').classList.toggle('show-side');return}
+ if(target.closest('#editInspector')){const isOpen=mobileLayout()?$('#app').classList.contains('show-inspector'):!$('#app').classList.contains('inspector-closed');setInspectorOpen(!isOpen);return}
+ if(target.closest('#mobileMenu')){
+ const app=$('#app');
+ app.classList.toggle('show-side');
+ app.classList.remove('show-inspector');
+ $('#mobileMenu').setAttribute('aria-expanded',String(app.classList.contains('show-side')));
+ return
+ }
+ if(target.closest('#mobileOverlay')){
+  $('#app').classList.remove('show-side','show-inspector');
+  setInspectorOpen(false);
+  $('#mobileMenu').setAttribute('aria-expanded','false');
+  return
+ }
+ if(target.closest('#mapShowGraph')){mapPresentation='graph';render();return}
+ if(target.closest('#mapShowList')){mapPresentation='list';render();return}
+ if(target.closest('[data-map-branch]')){
+  const key=target.closest('[data-map-branch]').dataset.mapBranch;
+  if(collapsedMapBranches.has(key))collapsedMapBranches.delete(key);else collapsedMapBranches.add(key);
+  render();return
+ }
+ if(target.closest('#mapHome')){const pane=$('#mapPane');if(pane){pane.scrollLeft=0;pane.scrollTop=0}return}
  if(target.closest('#teamRecoveryDownload')){try{teamDownloadRecovery()}catch(e){notify(e.message)}return}
  if(target.closest('#backupBtn')){download();return}
  if(target.closest('#restoreBtn')){$('#importFile').click();return}
