@@ -578,6 +578,24 @@
 @media(max-width:920px){.project-card-head h3{font-size:14px}.journal-calendar-title{margin-bottom:10px}.journal-weeknames span{padding:7px 2px}}
 @media(max-width:600px){.project-card-head .project-year-label{margin-bottom:8px}.project-card-head>.tag{font-size:9px}.journal-list-title{gap:8px}.journal-calendar-title{gap:8px}.journal-calendar-title>div{flex-wrap:wrap}.journal-calendar{overflow:hidden}.journal-days{min-width:0}.journal-day-count{max-width:100%;white-space:normal;overflow-wrap:anywhere}.journal-detail-actions .btn{flex:1}}
 
+
+/* Date agenda and compact calendar previews */
+.journal-day-preview{display:block;width:100%;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;line-height:1.4;background:#edf2fd;color:#345996;border-radius:4px;padding:3px 5px}
+.journal-day-preview.due{background:#fff2dc;color:#986324}
+.journal-day-preview.project,.journal-day-preview.task{background:#f5eefc;color:#7853a1}
+.journal-day-overflow{font-size:9px;color:#7082a0}
+.journal-agenda{margin:15px 0 20px;padding:16px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
+.journal-agenda-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.journal-agenda-heading strong{font-size:14px}.journal-agenda-heading span{font-size:10px;color:#8491a3}
+.journal-agenda-row{display:flex;align-items:center;gap:12px;border-top:1px solid #edf1f6;padding:12px 2px;min-width:0}
+.journal-agenda-kind{flex:none;padding:4px 7px;border-radius:6px;background:#eaf0fc;color:#3b5d9b;font-size:10px;font-weight:850}
+.journal-agenda-row.due .journal-agenda-kind{background:#fff1dc;color:#986123}
+.journal-agenda-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.journal-agenda-copy strong{font-size:12px;overflow-wrap:anywhere}.journal-agenda-copy small{font-size:10px;color:#8392a7;overflow-wrap:anywhere}
+.journal-agenda-status{font-size:10px;color:#ac642c}.journal-agenda-empty{font-size:11px;color:#8997a9}
+@media(max-width:700px){.journal-day-preview{font-size:8px;padding:2px 3px}.journal-day-select{gap:3px}.journal-agenda{padding:11px}.journal-agenda-row{gap:6px}.journal-agenda-row>.btn{padding:6px;font-size:10px}}
+@media(max-width:440px){.journal-day-preview{display:none}.journal-calendar-title .btn{font-size:10px}.journal-agenda-kind{font-size:9px}}
+
 </style>
 <style id="checklistPageStyle">@page{size:A4 portrait;margin:10mm}
 </style>
@@ -1417,6 +1435,50 @@ function journalOpenDetail(id){
  const closeBtn=modal.querySelector('[data-journal-close]');closeBtn?.focus();
 }
 function journalCloseDetail(){const m=document.getElementById('journalDetailBackdrop');if(m){m.classList.remove('open');m.innerHTML=''}document.body.style.overflow=''}
+
+function journalEventSummary(ev){
+ const p=projects.find(x=>x.id===ev.project_id);
+ return (p?.title?p.title+' · ':'')+ev.label;
+}
+function journalDateAgenda(date,records){
+ return journalDateEvents(date,records).map(ev=>{
+  const p=projects.find(x=>x.id===ev.project_id);
+  const log=ev.id?records.find(x=>String(x.id)===String(ev.id)):null;
+  return `<div class="journal-agenda-row ${ev.kind}">
+   <span class="journal-agenda-kind">${ev.kind==='record'?'업무기록':ev.kind==='due'?'후속 마감':ev.kind==='project'?'사업 마감':'과업 마감'}</span>
+   <div class="journal-agenda-copy"><strong>${esc(ev.kind==='record'?(log?.title||ev.label):ev.kind==='due'?(log?.followup||ev.label):ev.label)}</strong>
+   <small>${esc(p?.title||'사업 미확인')}${ev.kind==='due'&&log?' · 원본 기록일 '+esc(log.record_date):''}</small>
+   ${ev.kind==='due'&&log?`<span class="journal-agenda-status">${log.followup_status==='pending'?(log.followup_due<today()?'기한 초과 · 미완료':'처리 필요'):'처리 완료'}</span>`:''}</div>
+   ${ev.id?`<button type="button" class="btn" data-journal-detail="${esc(ev.id)}">상세 보기</button>`:''}</div>`;
+ }).join('')||'<p class="journal-agenda-empty">등록된 업무기록이나 마감 일정이 없습니다.</p>';
+}
+function journalPrintMonth(){
+ const [y,m]=journalMonth.split('-').map(Number),last=new Date(y,m,0).getDate(),records=journalVisibleRecords();
+ const rows=[];
+ for(let d=1;d<=last;d++){
+  const date=journalMonth+'-'+String(d).padStart(2,'0');
+  for(const e of journalDateEvents(date,records)){
+   const project=projects.find(p=>p.id===e.project_id)?.title||'사업 미확인';
+   rows.push(`<tr><td>${esc(date)}</td><td>${esc(e.kind==='record'?'업무기록':e.kind==='due'?'후속 마감':e.kind==='project'?'사업 마감':'과업 마감')}</td><td>${esc(project)}</td><td>${esc(e.kind==='record'?e.label.replace(/^.*? · /,''):e.label)}</td></tr>`);
+  }
+ }
+ const popup=window.open('','_blank');
+ if(!popup){notify('인쇄창이 차단되었습니다. 브라우저 팝업 허용 여부를 확인해 주세요.');return}
+ popup.document.open();
+ popup.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(journalMonth)} 업무기록 및 일정</title><style>
+ @page{size:A4 landscape;margin:13mm}*{box-sizing:border-box}
+ body{font:11px/1.6 "Malgun Gothic",sans-serif;color:#23334e;margin:0;padding:20px}
+ h1{font-size:20px;margin:0 0 4px}p{color:#64748b;margin:0 0 18px}
+ table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:8px;border:1px solid #d9e0eb;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+ th{background:#eef2f8}th:nth-child(1){width:15%}th:nth-child(2){width:13%}th:nth-child(3){width:24%}
+ tr{break-inside:avoid}.toolbar{margin-bottom:20px}.toolbar button{padding:9px 16px;background:#4065ec;color:white;border:0;border-radius:6px;cursor:pointer}
+ @media print{body{padding:0}.toolbar{display:none}thead{display:table-header-group}}
+ </style></head><body><div class="toolbar"><button onclick="window.print()">A4 인쇄 / PDF 저장</button></div>
+ <h1>${esc(journalMonth)} 업무기록·일정 현황</h1><p>현재 선택한 사업·연도·과업 범위의 날짜별 업무기록 및 마감 일정 · 총 ${rows.length}항목</p>
+ <table><thead><tr><th>일자</th><th>유형</th><th>사업명</th><th>주요 내용</th></tr></thead><tbody>${rows.join('')||'<tr><td colspan="4">해당 월의 일정이 없습니다.</td></tr>'}</tbody></table></body></html>`);
+ popup.document.close();popup.focus();
+}
+
 function journalChooseDate(date){journalSelectedDate=(journalSelectedDate===date?null:date);journalPage=0;render()}
 
 function journalRenderableList(log){
@@ -1464,7 +1526,7 @@ function renderJournal(){
   const events=journalDateEvents(date,records);
   const recordCount=records.filter(r=>r.record_date===date).length;
   const dueCount=events.filter(r=>r.kind==='due').length,taskCount=events.filter(r=>r.kind==='project'||r.kind==='task').length;
-  return `<button type="button" data-journal-day="${date}" class="journal-day journal-day-select ${valid?'':'outside'} ${weekday===0?'weekend-sun':weekday===6?'weekend-sat':''} ${date===today()?'today':''} ${journalSelectedDate===date?'selected':''}" aria-label="${date} 기록 ${recordCount}건, 후속 마감 ${dueCount}건, 과업 마감 ${taskCount}건"><span class="journal-day-number">${realDate.getDate()}</span>${recordCount?`<span class="journal-day-count">기록 ${recordCount}건</span>`:''}${dueCount?`<span class="journal-day-mini due">후속 ${dueCount}</span>`:''}${taskCount?`<span class="journal-day-mini task">마감 ${taskCount}</span>`:''}</button>`;
+  return `<button type="button" data-journal-day="${date}" class="journal-day journal-day-select ${valid?'':'outside'} ${weekday===0?'weekend-sun':weekday===6?'weekend-sat':''} ${date===today()?'today':''} ${journalSelectedDate===date?'selected':''}" aria-label="${date} 기록 ${recordCount}건, 후속 마감 ${dueCount}건, 과업 마감 ${taskCount}건"><span class="journal-day-number">${realDate.getDate()}</span>${recordCount?`<span class="journal-day-count">기록 ${recordCount}건</span>`:''}${dueCount?`<span class="journal-day-mini due">후속 ${dueCount}건</span>`:''}${taskCount?`<span class="journal-day-mini task">마감 ${taskCount}건</span>`:''}${events.slice(0,2).map(e=>`<span class="journal-day-preview ${e.kind}">${esc(e.kind==='record'?e.label.replace(/^.*? · /,''):e.label)}</span>`).join('')}${events.length>2?`<span class="journal-day-overflow">외 ${events.length-2}건</span>`:''}</button>`;
  }).join('');
  let listed=records.filter(log=>{
   if(journalFilter==='review')return log.needs_review||log.followup_status==='pending';
@@ -1474,6 +1536,7 @@ function renderJournal(){
  });
  if(journalSelectedDate)listed=listed.filter(log=>log.record_date===journalSelectedDate);
  listed.sort((a,b)=>String(b.record_date||'').localeCompare(String(a.record_date||''))||String(b.record_time||'').localeCompare(String(a.record_time||'')));
+ const dateAgenda=journalSelectedDate?journalDateAgenda(journalSelectedDate,records):'';
  const total=listed.length,perPage=20,maxPage=Math.max(0,Math.ceil(total/perPage)-1);
  journalPage=Math.min(journalPage,maxPage);const pageList=listed.slice(journalPage*perPage,(journalPage+1)*perPage);
  const pending=records.filter(x=>x.needs_review||x.followup_status==='pending').length;
@@ -1485,9 +1548,10 @@ function renderJournal(){
  <div class="journal-filters"><label>사업연도 <select id="journalYear">${['all','2026','2027','2028','2029','2030','unset'].map(y=>`<option value="${y}" ${businessYearFilter===y?'selected':''}>${y==='all'?'전체 연도':y==='unset'?'연도 미지정':y+'년'}</option>`).join('')}</select></label>
  <label>사업 <select id="journalProject"><option value="all">전체 사업</option>${projectsOptions.map(p=>`<option value="${esc(p.id)}" ${journalScope===p.id?'selected':''}>${esc(p.title)}</option>`).join('')}</select></label>
  <label>기록 <select id="journalRecordFilter">${[['all','전체'],['meeting','회의·협의'],['followup','후속 조치'],['review','확인 필요']].map(([v,l])=>`<option value="${v}" ${journalFilter===v?'selected':''}>${l}</option>`).join('')}</select></label></div>
- <section class="journal-calendar"><div class="journal-calendar-title"><strong>${yy}년 ${mm}월</strong><div><button type="button" class="btn" id="journalPrev">〈 이전 달</button><button type="button" class="btn" id="journalNow">이번 달</button><button type="button" class="btn" id="journalNext">다음 달 〉</button></div></div>
+ <section class="journal-calendar"><div class="journal-calendar-title"><strong>${yy}년 ${mm}월</strong><div><button type="button" class="btn" id="journalPrev">〈 이전 달</button><button type="button" class="btn" id="journalNow">이번 달</button><button type="button" class="btn" id="journalMonthPrint">⎙ 월간 일정 인쇄</button><button type="button" class="btn" id="journalNext">다음 달 〉</button></div></div>
  <div class="journal-weeknames">${['일','월','화','수','목','금','토'].map(d=>`<span>${d}</span>`).join('')}</div><div class="journal-days">${cells}</div>
  <div class="journal-legend"><span>● 기록 건수</span><span>● 후속 조치 마감</span><span>● 사업·과업 마감</span></div></section>
+ ${journalSelectedDate?`<section class="journal-agenda"><div class="journal-agenda-heading"><strong>${esc(journalSelectedDate)} · 일자별 일정</strong><span>업무기록 · 후속 마감 · 사업/과업 마감</span></div>${dateAgenda}</section>`:''}
  <div class="journal-list-title"><h2>${journalSelectedDate?esc(journalSelectedDate)+' · 협의·업무기록 ':'협의·업무기록 '}${total}건</h2><div class="journal-list-tools"><span>${pending?`확인 필요 ${pending}건`:'확인 필요 없음'}</span>${journalSelectedDate?'<button class="btn" id="journalAllDates">전체 날짜 보기</button>':''}</div></div>
  ${enabled?(total?`<div class="journal-entry-grid">${pageList.map(journalRenderableList).join('')}</div>${total>perPage?`<div class="journal-pagination"><button class="btn" data-journal-page="-1" ${journalPage===0?'disabled':''}>이전</button><span>${journalPage+1} / ${maxPage+1} 페이지 · 전체 ${total}건</span><button class="btn" data-journal-page="1" ${journalPage===maxPage?'disabled':''}>다음</button></div>`:''}`:'<div class="empty">해당 조건의 업무기록이 없습니다. 다른 날짜나 필터를 선택해 주세요.</div>'):'<div class="empty">설치를 완료한 뒤 날짜별 기록을 확인할 수 있습니다.</div>'}
  </div>`;
@@ -2322,6 +2386,7 @@ function handleGlobalClick(e){const target=e.target;
  if(target.id==='journalDetailBackdrop'||target.closest('[data-journal-close]')){journalCloseDetail();return}
  if(target.closest('[data-journal-detail]')){journalOpenDetail(target.closest('[data-journal-detail]').dataset.journalDetail);return}
  if(target.closest('[data-journal-day]')){journalChooseDate(target.closest('[data-journal-day]').dataset.journalDay);return}
+ if(target.closest('#journalMonthPrint')){journalPrintMonth();return}
  if(target.closest('#journalAllDates')){journalSelectedDate=null;journalPage=0;render();return}
  if(target.closest('[data-journal-page]')){journalPage=Math.max(0,journalPage+Number(target.closest('[data-journal-page]').dataset.journalPage));render();return}
  if(target.closest('[data-journal-add]')){journalScope=currentProjectId;journalOpenEditor(null,target.closest('[data-journal-add]').dataset.journalAdd);return}
