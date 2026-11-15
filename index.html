@@ -600,6 +600,26 @@
 .journal-day-project+.journal-day-preview{padding-top:1px;background:transparent;font-size:9px;color:#7083a0}
 @media(max-width:600px){.journal-day-project{font-size:8px}.journal-day-project+.journal-day-preview{display:none}}
 
+
+/* Mobile tree view: keep long task titles readable and controls tap-friendly. */
+@media(max-width:1100px){
+ .map-list-pane{height:100%;min-height:0;width:100%;overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
+ .map-list-tree{width:100%;max-width:960px;min-width:0}
+ .map-list-card{min-width:0}
+ .map-list-main{min-width:0;max-width:100%}
+ .map-list-actions{flex-shrink:0}
+ .map-list-title{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+ .map-pane{touch-action:pan-x pan-y}
+}
+@media(max-width:700px){
+ .map-list-pane{padding:12px 8px max(60px,env(safe-area-inset-bottom))}
+ .map-list-children{margin-left:5px;padding-left:9px}
+ .map-list-card{gap:7px;padding:10px 8px;align-items:flex-start}
+ .map-list-actions button{min-width:34px;min-height:40px}
+ .map-list-title{font-size:13px;line-height:1.5}
+ .journal-detail-sheet{height:100dvh;min-height:0}
+}
+
 </style>
 <style id="checklistPageStyle">@page{size:A4 portrait;margin:10mm}
 </style>
@@ -737,7 +757,8 @@ function getInitial(){try{
  try{const fresh=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(fresh))return fresh.map(p=>normalizeNode(p))}catch(e){}try{const old=JSON.parse(localStorage.getItem(OLD_KEY));if(Array.isArray(old)&&old.length){const items=old.map(p=>normalizeNode(p));localStorage.setItem(KEY,JSON.stringify(items));return items}}catch(e){}return []}
 const mobileLayout=()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 1100px), (any-pointer: coarse) and (max-width: 1500px)').matches;
 const phonePortrait=()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 700px), (any-pointer: coarse) and (max-width: 1100px) and (orientation: portrait)').matches;
-let mapPresentation=phonePortrait()?'list':'graph';
+// Narrow touch screens default to the readable hierarchy; the graph remains available in the switch.
+let mapPresentation=window.matchMedia('(max-width: 1100px)').matches?'list':'graph';
 let checklistOrientation=localStorage.getItem('taskflow-checklist-orientation')==='landscape'?'landscape':'portrait';
 function applyChecklistPageStyle(){
  const page=$('#checklistPageStyle');
@@ -1425,7 +1446,25 @@ function journalOpenDetail(id){
  const p=projects.find(p=>p.id===log.project_id);
  const line=(title,value)=>value?`<div class="journal-detail-section"><strong>${title}</strong><div>${esc(value)}</div></div>`:'';
  let modal=document.getElementById('journalDetailBackdrop');
- if(!modal){modal=document.createElement('div');modal.id='journalDetailBackdrop';modal.className='journal-detail-backdrop';document.body.appendChild(modal)}
+ if(!modal){
+  modal=document.createElement('div');
+  modal.id='journalDetailBackdrop';
+  modal.className='journal-detail-backdrop';
+  document.body.appendChild(modal);
+  // The sheet is outside #app: its controls must not depend on the #app click delegate.
+  modal.addEventListener('click',e=>{
+   if(e.target===modal||e.target.closest('[data-journal-close]')){journalCloseDetail();return}
+   const edit=e.target.closest('[data-journal-edit]');
+   if(edit){
+    const recordId=edit.dataset.journalEdit;
+    journalCloseDetail();
+    journalOpenEditor(recordId);
+    return
+   }
+   const print=e.target.closest('[data-journal-print]');
+   if(print){journalPrint(print.dataset.journalPrint);return}
+  });
+ }
  modal.innerHTML=`<section class="journal-detail-sheet" role="dialog" aria-modal="true" aria-labelledby="journalDetailTitle">
  <div class="journal-detail-head"><div><span class="journal-kind">${esc(journalTypeName(log.kind))}</span><h2 id="journalDetailTitle">${esc(log.title||'업무기록')}</h2><small>${esc(log.record_date)} ${esc(String(log.record_time||'').slice(0,5))}</small></div><button type="button" class="btn" data-journal-close aria-label="상세보기 닫기">✕</button></div>
  <div class="journal-detail-body"><div class="journal-detail-project">${esc(p?.title||'사업 미확인')}</div><div class="journal-detail-trail">${esc(path.slice(1).join(' → '))}</div>
