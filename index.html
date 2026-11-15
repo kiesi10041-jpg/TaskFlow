@@ -445,6 +445,40 @@
  .toolbar .zoombox{margin-left:auto}
 }
 
+
+/* Readable, nonduplicative numbered hierarchical A4 checklist */
+.print-checklist .print-scope{margin:-4px 0 16px;padding:9px 11px;border:1px solid #e3eaf3;border-radius:7px;background:#f7f9fc;color:#667892;font-size:10px;line-height:1.6}
+.print-checklist .print-group{margin-bottom:16px;break-inside:auto;page-break-inside:auto}
+.print-checklist .print-group h3{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 8px;padding:9px 12px;font-size:13px;break-after:avoid;page-break-after:avoid}
+.print-checklist .print-group h3 small{font-size:10px;font-weight:650;color:#60738d;white-space:nowrap}
+.print-checklist .print-work{padding:0;margin:0 0 11px;border:1px solid #d8e1ed;break-inside:auto;page-break-inside:auto;overflow:visible}
+.print-checklist .print-work-title{display:flex;justify-content:space-between;align-items:baseline;gap:9px;padding:11px 12px;margin:0;background:#f8fafc;font-size:12px;line-height:1.5;break-after:avoid;page-break-after:avoid}
+.print-checklist .print-work-title strong{flex:1;min-width:0;overflow-wrap:anywhere}
+.print-checklist .print-work-title span{font-size:10px;font-weight:750;color:#60748e;white-space:nowrap}
+.print-checklist .print-stage-list{display:block}
+.print-checklist .print-stage-row{display:grid;grid-template-columns:16px minmax(47px,auto) minmax(0,1fr) minmax(54px,auto);align-items:start;gap:8px;padding:8px 11px;border-top:1px solid #e3eaf3;line-height:1.5;min-height:39px;break-inside:avoid;page-break-inside:avoid}
+.print-checklist .print-stage-check{width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #7a889d;border-radius:2px;font-size:11px;font-weight:900;line-height:1}
+.print-checklist .print-stage-row.completed .print-stage-check{border-color:#159879;color:#138e72}
+.print-checklist .print-stage-number{font-size:10px;color:#516787;font-weight:850;white-space:nowrap;padding-top:1px}
+.print-checklist .print-stage-content{min-width:0;padding-left:var(--stage-indent,0px);overflow-wrap:anywhere;word-break:keep-all}
+.print-checklist .print-stage-content strong{display:block;color:#223951;font-weight:700;font-size:11px}
+.print-checklist .print-stage-content small{display:block;color:#77879c;font-size:9px;margin-top:2px}
+.print-checklist .print-stage-state{font-size:10px;font-weight:800;white-space:normal;max-width:115px;color:#60738e;text-align:right;line-height:1.5}
+.print-checklist .print-stage-state.done{color:#128f6f}
+.print-checklist .print-stage-state.blocked{color:#b34d55}
+.print-checklist .print-stage-state.doing{color:#9d7226}
+.print-checklist .print-stage-row[data-print-stage-depth]:not([data-print-stage-depth="0"]){background:#fcfdff}
+.print-checklist .print-stage-row[data-print-stage-depth]:not([data-print-stage-depth="0"]) .print-stage-content strong{font-weight:600}
+.print-checklist .print-no-stages{font-size:11px;color:#8896ab;padding:14px}
+@media print{
+ .print-checklist .print-group,.print-checklist .print-work{break-inside:auto!important;page-break-inside:auto!important}
+ .print-checklist .print-work-title,.print-checklist .print-group h3{break-after:avoid-page;page-break-after:avoid}
+ .print-checklist .print-stage-row{break-inside:avoid!important;page-break-inside:avoid!important}
+ .print-checklist .print-stage-content strong{font-size:10.5px}
+ .print-checklist .print-scope{font-size:9px}
+ .print-checklist .print-head{break-inside:avoid}
+}
+
 </style>
 </head>
 <body>
@@ -915,8 +949,45 @@ function openMapPrintPreview(){
  closeMapPrintDialog();
 }
 
-function printNested(n,depth=0){return `<div class="print-sub" style="padding-left:${depth*6}px">${stateOf(n,4+depth)==='done'?'☑':'□'} ${esc(n.title)}</div>${(n.children||[]).map(c=>printNested(c,depth+1)).join('')}`}
-function printHtml(){const p=current();if(!p)return '<div class="paper">사업이 없습니다.</div>';const s=stats(p);return `<div class="paper"><div class="print-head"><div><div class="eyebrow">TASKFLOW / PROJECT CHECKLIST</div><h2>${esc(p.title)}</h2><div class="sm">${esc(p.client||'기업명 미입력')}　|　출력일 ${today()}　|　※ 인쇄 후 빈칸에 직접 표시</div></div><div class="count">완료 ${s.done} / ${s.total}<div class="sm">단계별 체크시트</div></div></div>${(p.children||[]).map((cat,i)=>`<div class="print-group"><h3>${String(i+1).padStart(2,'0')}　${esc(cat.title)}　·　${(cat.children||[]).length}개 세부과업</h3>${(cat.children||[]).map((w,j)=>`<div class="print-work"><div class="print-work-title"><span>${i+1}-${j+1}. ${esc(w.title)}</span><small>${rate(w,2)}% 완료</small></div><div class="print-timeline">${(w.children||[]).map((step,k)=>`${k?'<span class="print-arrow">→</span>':''}<div class="print-step"><div class="print-step-head"><span class="print-check">${stateOf(step,3)==='done'?'✓':''}</span><span>${esc(step.title)}</span></div>${step.assignee||step.due?`<small>${step.assignee?'담당 '+esc(step.assignee):''} ${esc(step.due||'')}</small>`:''}${(step.children||[]).map(c=>printNested(c)).join('')}</div>`).join('')||'<span style="color:#8c98a9">등록된 실행단계 없음</span>'}</div></div>`).join('')||'<div style="padding:10px;color:#8896a7">세부과업을 등록하세요.</div>'}</div>`).join('')||'<div style="padding:25px">지원항목이 없습니다.</div>'}<div class="print-legend">□ 대기·진행 중·보류 / ✓ 완료　　• 완료 표시 이후 종이에서 추가로 체크하거나 펜으로 지울 수 있습니다.　　• 출력본은 선택된 사업만 포함합니다.</div></div>`}
+function printStageRows(stage,numberPath,depth=0){
+ const level=3+depth,st=stateOf(stage,level),done=st==='done';
+ const owners=ownerNames(stage);
+ const meta=[owners.length?'담당 '+owners.join(', '):'',stage.due?'마감 '+stage.due:''].filter(Boolean).join(' · ');
+ const label=needsFinalConfirmation(stage,level)?'하위 완료 · 최종 확인 필요':stateText[st]||'대기';
+ const own=`<div class="print-stage-row ${done?'completed':''}" data-print-stage-id="${esc(stage.id)}" data-print-stage-depth="${depth}">
+ <span class="print-stage-check" aria-label="${done?'완료':'미완료'}">${done?'✓':''}</span>
+ <span class="print-stage-number">${esc(numberPath.join('-'))}</span>
+ <div class="print-stage-content" style="--stage-indent:${Math.min(depth,12)*10}px">
+  <strong>${esc(stage.title)}</strong>
+  ${meta?`<small>${esc(meta)}</small>`:''}
+ </div>
+ <span class="print-stage-state ${st}">${esc(label)}</span>
+ </div>`;
+ return own+(stage.children||[]).map((child,i)=>printStageRows(child,[...numberPath,i+1],depth+1)).join('');
+}
+function printHtml(){
+ const p=current();if(!p)return '<div class="paper">사업이 없습니다.</div>';
+ const summary=stats(p);
+ const groups=(p.children||[]).map((cat,i)=>{
+  const works=(cat.children||[]).map((w,j)=>{
+   const ws=stats(w,2);
+   const stages=(w.children||[]).map((step,k)=>printStageRows(step,[i+1,j+1,k+1])).join('');
+   return `<section class="print-work">
+    <div class="print-work-title"><strong>${i+1}-${j+1}. ${esc(w.title)}</strong><span>${ws.done}/${ws.total}단계 완료 · ${rate(w,2)}%</span></div>
+    <div class="print-stage-list">${stages||'<div class="print-no-stages">등록된 실행단계가 없습니다.</div>'}</div>
+   </section>`;
+  }).join('')||'<div class="print-no-stages">등록된 세부과업이 없습니다.</div>';
+  return `<section class="print-group"><h3>${String(i+1).padStart(2,'0')}　${esc(cat.title)} <small>세부과업 ${(cat.children||[]).length}건</small></h3>${works}</section>`;
+ }).join('')||'<div class="print-no-stages">등록된 지원항목이 없습니다.</div>';
+ return `<article class="paper print-checklist">
+  <div class="print-head"><div><div class="eyebrow">TASKFLOW / PROJECT CHECKLIST</div><h2>${esc(p.title)}</h2>
+   <div class="sm">${esc(p.client||'기업명 미입력')} · ${p.businessYear?esc(p.businessYear)+'년 · ':''}출력일 ${today()}</div>
+  </div><div class="count">완료 ${summary.done} / ${summary.total}<div class="sm">하위단계 포함 · 전체 실행단계</div></div></div>
+  <div class="print-scope">지원항목 → 세부과업 → 실행단계 → 하위단계 · 각 단계는 해당 위치에 한 번만 표시됩니다.</div>
+  ${groups}
+  <footer class="print-legend">□ 미완료 / ✓ 완료 · 단계 번호는 지원항목-세부과업-실행단계-하위단계 순입니다. 제목이 동일해도 소속 과업이 다르면 각기 다른 실행단계입니다.</footer>
+ </article>`;
+}
 function inspectorStatusPanel(n,level,st){
  if(level<3)return '<div class="field"><span>진행상태</span><div class="note-box">상위 항목은 하위 실행단계가 최종 완료된 경우에만 완료로 표시됩니다. 각 실행단계의 최종 완료 여부를 확인해 주세요.</div></div>';
  return `<div class="field"><span>진행상태 · 현재 단계만 적용</span><div class="state-grid">${['todo','doing','blocked','done'].map(x=>`<button class="statebutton ${st===x?'active':''}" data-state="${x}">${{todo:'○ 대기',doing:'◔ 진행 중',blocked:'! 보류',done:'✓ 완료'}[x]}</button>`).join('')}</div>${needsFinalConfirmation(n,level)?'<div class="note-box">하위 단계는 모두 완료됐습니다. 이 단계의 업무도 끝났다면 직접 ‘완료’를 선택하세요.</div>':''}</div>`
