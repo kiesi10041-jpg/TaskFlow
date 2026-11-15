@@ -509,8 +509,6 @@
  .print-checklist .print-stage-row{break-inside:avoid!important;page-break-inside:avoid!important}
 }
 
-</style>
-<style id="checklistPageStyle">@page{size:A4 portrait;margin:10mm}
 /* TaskFlow compact dated journal, responsive record sheet */
 .journal-day-select{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;text-align:left;cursor:pointer;font:inherit;border-top:0;border-left:0;min-height:84px}
 .journal-day-select:hover{background:#f1f5ff}.journal-day-select.selected{background:#e8efff;outline:2px solid #5775ee;outline-offset:-2px}
@@ -539,6 +537,28 @@
 .journal-detail-actions{display:flex;gap:9px;padding:13px 20px;border-top:1px solid #e7edf5;justify-content:flex-end}
 @media(max-width:700px){.journal-day-select{min-height:59px;padding:4px 2px}.journal-day-count{font-size:9px;padding:3px 2px}.journal-day-mini{font-size:8px;padding:2px}.journal-entry-grid{grid-template-columns:1fr}.journal-detail-sheet{width:100vw}.journal-detail-head,.journal-detail-body{padding:15px}.journal-detail-head h2{font-size:17px}.journal-list-title{align-items:flex-start;flex-wrap:wrap}}
 
+
+/* Calendar visual correction: maintain seven columns and show adjacent dates */
+.journal-days{grid-auto-rows:minmax(94px,auto)}
+.journal-day-select{box-sizing:border-box;appearance:none;outline:0;position:relative;justify-content:flex-start;align-items:flex-start;border:0;border-right:1px solid #e5ebf3;border-bottom:1px solid #e5ebf3;border-radius:0;background:#fff;padding:9px 8px;min-width:0;color:#304869;text-align:left;line-height:1.3}
+.journal-day-select:nth-child(7n){border-right:0}
+.journal-day-select.outside{color:#a7b1c1;background:#f7f9fc}
+.journal-day-select.outside .journal-day-number{color:#9da9ba}
+.journal-day-select.weekend-sun:not(.outside) .journal-day-number{color:#d04b58}
+.journal-day-select.weekend-sat:not(.outside) .journal-day-number{color:#326ad0}
+.journal-day-select.weekend-sun.outside .journal-day-number{color:#dba9b0}
+.journal-day-select.weekend-sat.outside .journal-day-number{color:#9fb8e5}
+.journal-weeknames span:first-child{color:#ca4d5c}
+.journal-weeknames span:last-child{color:#3664be}
+.journal-day-select .journal-day-number{display:block;font-weight:800;font-size:12px;margin:0 0 4px}
+.journal-day-select:focus-visible{outline:2px solid #5576ef;outline-offset:-2px}
+.journal-entry-compact{border-radius:12px}
+.journal-entry-open{font:inherit;color:inherit;line-height:1.5}
+.journal-detail-backdrop{z-index:1100}
+@media(max-width:600px){.journal-days{grid-auto-rows:minmax(66px,auto)}.journal-day-select{padding:5px 3px;gap:3px}.journal-day-select .journal-day-number{font-size:10px}.journal-day-mini{display:none}.journal-detail-sheet{height:100dvh;max-height:100dvh}}
+
+</style>
+<style id="checklistPageStyle">@page{size:A4 portrait;margin:10mm}
 </style>
 </head>
 <body>
@@ -1418,11 +1438,12 @@ function renderJournal(){
  const count=new Date(yy,mm,0).getDate(),records=journalVisibleRecords();
  const cells=Array.from({length:Math.ceil((first+count)/7)*7},(_,i)=>{
   const day=i-first+1,valid=day>=1&&day<=count;
-  if(!valid)return '<div class="journal-day outside"></div>';
-  const date=month+'-'+String(day).padStart(2,'0'),events=journalDateEvents(date,records);
+  const realDate=new Date(yy,mm-1,day),date=realDate.getFullYear()+'-'+String(realDate.getMonth()+1).padStart(2,'0')+'-'+String(realDate.getDate()).padStart(2,'0');
+  const weekday=i%7;
+  const events=journalDateEvents(date,records);
   const recordCount=records.filter(r=>r.record_date===date).length;
   const dueCount=events.filter(r=>r.kind==='due').length,taskCount=events.filter(r=>r.kind==='project'||r.kind==='task').length;
-  return `<button type="button" data-journal-day="${date}" class="journal-day journal-day-select ${date===today()?'today':''} ${journalSelectedDate===date?'selected':''}" aria-label="${date} 기록 ${recordCount}건, 후속 마감 ${dueCount}건, 과업 마감 ${taskCount}건"><span class="journal-day-number">${day}</span>${recordCount?`<span class="journal-day-count">기록 ${recordCount}건</span>`:''}${dueCount?`<span class="journal-day-mini due">후속 ${dueCount}</span>`:''}${taskCount?`<span class="journal-day-mini task">마감 ${taskCount}</span>`:''}</button>`;
+  return `<button type="button" data-journal-day="${date}" class="journal-day journal-day-select ${valid?'':'outside'} ${weekday===0?'weekend-sun':weekday===6?'weekend-sat':''} ${date===today()?'today':''} ${journalSelectedDate===date?'selected':''}" aria-label="${date} 기록 ${recordCount}건, 후속 마감 ${dueCount}건, 과업 마감 ${taskCount}건"><span class="journal-day-number">${realDate.getDate()}</span>${recordCount?`<span class="journal-day-count">기록 ${recordCount}건</span>`:''}${dueCount?`<span class="journal-day-mini due">후속 ${dueCount}</span>`:''}${taskCount?`<span class="journal-day-mini task">마감 ${taskCount}</span>`:''}</button>`;
  }).join('');
  let listed=records.filter(log=>{
   if(journalFilter==='review')return log.needs_review||log.followup_status==='pending';
