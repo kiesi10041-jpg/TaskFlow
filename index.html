@@ -410,6 +410,9 @@
 
 .journal-focused{background:#eef4ff;border:1px solid #d6e2f7;border-radius:10px;padding:10px 13px;margin:0 0 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;color:#3e5881}
 .journal-focused strong{color:#2d4b7e}
+
+.journal-entry.journal-flash{outline:3px solid #6f8ff2;box-shadow:0 0 0 7px #6e8af51c}
+.journal-calendar-event:focus-visible{outline:2px solid #4673d8}
 </style>
 </head>
 <body>
@@ -1180,7 +1183,7 @@ function journalRenderableList(log){
  const urgent=log.followup_status==='pending'||log.needs_review;
  const overdue=log.followup_status==='pending'&&log.followup_due&&log.followup_due<today();
  const desc=String(log.content||'').slice(0,180);
- return `<article class="journal-entry ${urgent?'attention':''}">
+ return `<article id="journalRecord-${esc(log.id)}" class="journal-entry ${urgent?'attention':''}">
  <div class="journal-entry-head"><span class="journal-kind">${esc(journalTypeName(log.kind))}</span><span>${esc(log.record_date||'')}${log.record_time?' · '+esc(String(log.record_time).slice(0,5)):''}</span>${overdue?'<span class="journal-warning">기한 지연</span>':urgent?'<span class="journal-warning">확인 필요</span>':''}</div>
  <h3>${esc(log.title||'제목 없음')}</h3>
  <p class="journal-entry-path">${esc(p?.businessYear||'연도 미지정')} · ${esc(path.join(' → '))}</p>
@@ -1213,7 +1216,7 @@ function renderJournal(){
   const day=i-first+1,valid=day>=1&&day<=count;
   if(!valid)return `<div class="journal-day outside"></div>`;
   const date=month+'-'+String(day).padStart(2,'0'),events=journalDateEvents(date,records);
-  return `<div class="journal-day ${date===today()?'today':''}"><span class="journal-day-number">${day}</span>${events.slice(0,3).map(e=>`<button type="button" class="journal-calendar-event ${e.kind}" ${e.id?`data-journal-print="${esc(e.id)}"`:''} title="${esc(e.label)}">${esc(e.label)}</button>`).join('')}${events.length>3?`<span class="journal-calendar-more">+${events.length-3}건</span>`:''}</div>`;
+  return `<div class="journal-day ${date===today()?'today':''}"><span class="journal-day-number">${day}</span>${events.slice(0,3).map(e=>`<button type="button" class="journal-calendar-event ${e.kind}" ${e.id?`data-journal-view-record="${esc(e.id)}"`:''} title="${esc(e.label)}">${esc(e.label)}</button>`).join('')}${events.length>3?`<span class="journal-calendar-more">+${events.length-3}건</span>`:''}</div>`;
  }).join('');
  const listed=records.filter(log=>{
   if(journalFilter==='review')return log.needs_review||log.followup_status==='pending';
@@ -1332,7 +1335,8 @@ async function journalDelete(id){
  const log=(team.activityLogs||[]).find(x=>x.id===id);
  if(!log||!journalAllowed(log.node_id,log.project_id))throw Error('삭제 권한이 없습니다.');
  if(!confirm('업무기록을 삭제하시겠습니까? 회의록과 후속 조치 정보가 함께 삭제됩니다.'))return;
- await cloudRequest('/rest/v1/taskflow_activity_logs?id=eq.'+encodeURIComponent(id),'DELETE');
+ const result=await cloudRequest('/rest/v1/taskflow_activity_logs?id=eq.'+encodeURIComponent(id)+'&revision=eq.'+log.revision+'&select=id','DELETE',null,{'Prefer':'return=representation'});
+ if(!Array.isArray(result)||result.length!==1)throw Error('다른 직원이 이 기록을 수정했습니다. 삭제 전에 최신 내용을 다시 확인해 주세요.');
  await journalLoad();render();notify('업무기록이 삭제되었습니다.');
 }
 
@@ -2072,8 +2076,15 @@ async function cloudAction(fn,rerender=true){
  }
 }
 function handleGlobalClick(e){const target=e.target;
- if(target.closest('[data-journal-add]')){journalOpenEditor(null,target.closest('[data-journal-add]').dataset.journalAdd);return}
+ if(target.closest('[data-journal-add]')){journalScope=currentProjectId;journalOpenEditor(null,target.closest('[data-journal-add]').dataset.journalAdd);return}
  if(target.closest('[data-journal-view-node]')){journalScope=currentProjectId;journalNodeFocus=target.closest('[data-journal-view-node]').dataset.journalViewNode;view='journal';setInspectorOpen(false);render();return}
+ if(target.closest('[data-journal-view-record]')){
+  const id=target.closest('[data-journal-view-record]').dataset.journalViewRecord;
+  journalFilter='all';render();
+  const card=document.getElementById('journalRecord-'+id);
+  if(card){card.scrollIntoView({behavior:'smooth',block:'center'});card.classList.add('journal-flash')}
+  return
+ }
  if(target.closest('[data-journal-print]')){journalPrint(target.closest('[data-journal-print]').dataset.journalPrint);return}
  if(target.closest('[data-journal-edit]')){journalOpenEditor(target.closest('[data-journal-edit]').dataset.journalEdit);return}
  if(target.closest('[data-journal-delete]')){journalDelete(target.closest('[data-journal-delete]').dataset.journalDelete).catch(e=>notify(e.message));return}
