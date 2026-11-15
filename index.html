@@ -374,6 +374,7 @@
 .journal-calendar-event{display:block;min-width:0;width:100%;font-size:9px;line-height:1.4;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:4px 5px;margin-bottom:3px;border:0;border-radius:5px;background:#e9f0ff;color:#37599c}
 .journal-calendar-event.due{background:#fff0db;color:#9b601f}
 .journal-calendar-event.project{background:#fce4e8;color:#b74a57}
+.journal-calendar-event.task{background:#f2e8ff;color:#7653ab}
 .journal-calendar-more{font-size:9px;color:#889ab1;font-weight:850}
 .journal-legend{display:flex;flex-wrap:wrap;gap:15px;color:#71819a;font-size:10px;padding-top:13px}
 .journal-legend span:first-child{color:#365eb0}.journal-legend span:nth-child(2){color:#b77829}.journal-legend span:last-child{color:#b94f58}
@@ -1200,9 +1201,15 @@ function journalDateEvents(date,records){
   if(log.record_date===date)events.push({kind:'record',label:journalTypeName(log.kind)+' · '+log.title,id:log.id,project_id:log.project_id});
   if(log.followup_status==='pending'&&log.followup_due===date)events.push({kind:'due',label:'후속 마감 · '+(log.followup||log.title),id:log.id,project_id:log.project_id});
  }
- if(journalScope!=='all'){
-  const p=projects.find(x=>x.id===journalScope);
-  if(p?.deadline===date)events.push({kind:'project',label:'사업 마감 · '+p.title});
+ // Existing TaskFlow due dates and project deadlines also appear on the calendar.
+ const visibleProjects=projects.filter(p=>(businessYearFilter==='all'||(businessYearFilter==='unset'?!p.businessYear:p.businessYear===businessYearFilter))&&(journalScope==='all'||p.id===journalScope));
+ for(const p of visibleProjects){
+  if(p.deadline===date)events.push({kind:'project',label:'사업 마감 · '+p.title,project_id:p.id});
+  const visit=(n,depth)=>{
+   if(depth>=2&&n.due===date&&stateOf(n,depth)!=='done')events.push({kind:'task',label:'과업 마감 · '+n.title,project_id:p.id});
+   (n.children||[]).forEach(c=>visit(c,depth+1));
+  };
+  visit(p,0);
  }
  return events;
 }
@@ -1242,7 +1249,7 @@ function renderJournal(){
   <div class="journal-calendar-title"><strong>${yy}년 ${mm}월</strong><div><button type="button" class="btn" id="journalPrev">〈 이전 달</button><button type="button" class="btn" id="journalNow">이번 달</button><button type="button" class="btn" id="journalNext">다음 달 〉</button></div></div>
   <div class="journal-weeknames">${['일','월','화','수','목','금','토'].map(d=>`<span>${d}</span>`).join('')}</div>
   <div class="journal-days">${cells}</div>
-  <div class="journal-legend"><span>● 회의·협의</span><span>● 후속 조치 마감</span><span>● 사업 마감</span></div>
+  <div class="journal-legend"><span>● 회의·협의</span><span>● 후속 조치 마감</span><span>● 사업·과업 마감</span></div>
  </section>
  <div class="journal-list-title"><h2>업무기록 ${listed.length}건</h2><span>${pending?`확인 필요 ${pending}건`:'확인 필요 없음'}</span></div>
  ${enabled?(listed.length?`<div class="journal-entry-grid">${listed.map(journalRenderableList).join('')}</div>`:'<div class="empty">등록된 업무기록이 없습니다. 담당 세부과업에서 업무기록을 작성해 보세요.</div>'):'<div class="empty">설치를 완료한 뒤 이 화면에서 날짜별 기록을 확인할 수 있습니다.</div>'}
