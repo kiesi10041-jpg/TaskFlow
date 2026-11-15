@@ -336,6 +336,77 @@
  .mobile-close-inspector{display:flex;align-items:center;justify-content:flex-end;align-self:stretch;padding:13px 17px;min-height:48px;background:#f7f9fd;border:0;border-bottom:1px solid #e0e6ef;color:#455d7e;font-weight:850;font-size:12px}
  .mobile-close-inspector:focus-visible,.mobile-close-side:focus-visible{outline:3px solid #7b99ff}
 }
+
+/* Per-task work journal & dated decisions */
+.journal-node-badge{display:inline-flex;align-items:center;gap:3px;color:#4e6a9a;background:#edf2ff;border-radius:6px;font-size:10px;font-weight:850;padding:3px 5px;white-space:nowrap}
+.journal-node-badge.attention{background:#fff0db;color:#99601e}
+.journal-node-badge.overdue{background:#ffe5e8;color:#b44150}
+.graph-node .journal-node-badge{font-size:9px;padding:3px 4px}
+.map-list-meta .journal-node-badge{margin-left:auto}
+.journal-inspector{border:1px solid #dce5f1;background:#f8fbff;border-radius:12px;padding:13px;margin:12px 0}
+.journal-inspector h3{font-size:12px;margin:0 0 6px;color:#2e4667}
+.journal-inspector p{font-size:11px;color:#7889a1;line-height:1.6;margin:5px 0}
+.journal-inspector .journal-inspector-rows{display:flex;gap:8px;flex-wrap:wrap;margin:9px 0}
+.journal-inspector-rows span{font-size:10px;background:white;border:1px solid #e1e9f5;border-radius:6px;padding:6px}
+.journal-inspector .btn{white-space:normal}
+.journal-page{max-width:1270px;margin:0 auto;padding:22px 24px 72px}
+.journal-top{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap;margin-bottom:20px}
+.journal-top h2{font-size:22px;letter-spacing:-.5px;margin:5px 0}
+.journal-top p{font-size:12px;line-height:1.6;color:#8191a6;margin:0}
+.journal-install{padding:18px;border-radius:12px;border:1px solid #d6e2f6;background:#f4f8ff;color:#375078;font-size:12px;margin:15px 0;line-height:1.7}
+.journal-install p{font-size:11px}
+.journal-install a{color:#365dd2;font-weight:850}
+.journal-filters{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.journal-filters label{display:flex;gap:6px;align-items:center;color:#687b96;font-size:11px;font-weight:800}
+.journal-filters select{max-width:340px;min-height:38px;border:1px solid #d7e2f0;border-radius:9px;background:white;padding:7px 10px;color:#263e63;font-size:12px}
+.journal-calendar{background:#fff;border:1px solid #e0e7f0;border-radius:16px;padding:18px 18px 12px;box-shadow:var(--shadow)}
+.journal-calendar-title{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+.journal-calendar-title strong{font-size:17px}
+.journal-calendar-title>div{display:flex;gap:5px}
+.journal-weeknames,.journal-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.journal-weeknames span{padding:10px 4px;text-align:center;font-size:11px;color:#71819a;font-weight:850;border-bottom:1px solid #dfe6f0}
+.journal-weeknames span:first-child{color:#c35462}
+.journal-day{min-width:0;min-height:99px;padding:7px 5px;border-right:1px solid #e7edf5;border-bottom:1px solid #e7edf5;background:#fff}
+.journal-day:nth-child(7n){border-right:0}
+.journal-day.outside{background:#fafbfd}
+.journal-day.today{background:#f4f7ff}
+.journal-day-number{display:block;margin:0 0 5px;font-size:11px;color:#465c77;font-weight:800}
+.journal-calendar-event{display:block;min-width:0;width:100%;font-size:9px;line-height:1.4;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:4px 5px;margin-bottom:3px;border:0;border-radius:5px;background:#e9f0ff;color:#37599c}
+.journal-calendar-event.due{background:#fff0db;color:#9b601f}
+.journal-calendar-event.project{background:#fce4e8;color:#b74a57}
+.journal-calendar-more{font-size:9px;color:#889ab1;font-weight:850}
+.journal-legend{display:flex;flex-wrap:wrap;gap:15px;color:#71819a;font-size:10px;padding-top:13px}
+.journal-legend span:first-child{color:#365eb0}.journal-legend span:nth-child(2){color:#b77829}.journal-legend span:last-child{color:#b94f58}
+.journal-list-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:22px 0 13px}
+.journal-list-title h2{font-size:17px;margin:0}
+.journal-list-title span{font-size:11px;color:#b86527;background:#fff2e0;padding:6px 9px;border-radius:8px;font-weight:850}
+.journal-entry-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.journal-entry{background:white;padding:18px;border:1px solid #dee6f1;border-radius:12px;min-width:0}
+.journal-entry.attention{border-left:4px solid #e4a84a}
+.journal-entry-head{display:flex;align-items:center;flex-wrap:wrap;gap:7px;color:#7489a6;font-size:11px}
+.journal-kind{font-size:10px;font-weight:850;padding:4px 8px;background:#eaf0ff;color:#4966b5;border-radius:6px}
+.journal-warning{background:#fff1e0;color:#b36e27;font-size:10px;border-radius:5px;padding:4px 6px}
+.journal-entry h3{font-size:15px;margin:13px 0 6px;line-height:1.5;overflow-wrap:anywhere}
+.journal-entry-path{font-size:11px;color:#6c83a3;overflow-wrap:anywhere;line-height:1.6}
+.journal-entry-body,.journal-entry-decision,.journal-entry-followup{font-size:11px;color:#596d87;line-height:1.7;overflow-wrap:anywhere;white-space:pre-wrap}
+.journal-entry-decision b,.journal-entry-followup b{color:#253c62;margin-right:4px}
+.journal-entry-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:15px;border-top:1px solid #eaf0f7;padding-top:12px}
+.activity-modal{max-width:780px;width:min(780px,96vw);max-height:94dvh;overflow-y:auto;padding:22px}
+.activity-modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.activity-modal-header small{font-size:10px;letter-spacing:1px;color:#758dad;font-weight:850}
+.activity-modal-header h2{font-size:21px;margin:4px 0 16px}
+.activity-modal .two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.activity-modal .field{min-width:0}
+.activity-modal .field textarea{min-height:95px;line-height:1.65;resize:vertical}
+.activity-checkbox{display:flex;align-items:center;gap:10px;border:1px solid #e0e7f2;border-radius:9px;padding:12px;margin:10px 0;color:#586c89;font-size:12px;font-weight:750}
+.activity-checkbox input{width:17px;height:17px;accent-color:#4163d8}
+.activity-form-error{padding:10px;background:#ffeded;color:#b43d50;border-radius:8px;font-size:11px;line-height:1.6;margin:11px 0}
+.dashboard-year-bar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 18px;font-size:12px;color:#647a9c}
+.dashboard-year-bar select{border:1px solid #dce5f0;background:#fff;border-radius:8px;padding:8px 10px;font-weight:800;color:#38527e}
+.project-year-label{font-size:10px;background:#e5edff;color:#4265af;border-radius:6px;padding:4px 7px;font-weight:800}
+@media(max-width:920px){.journal-entry-grid{grid-template-columns:1fr}.journal-page{padding:16px 14px 55px}.journal-calendar{padding:10px}.journal-day{min-height:81px}}
+@media(max-width:600px){.journal-page{padding:13px 9px 45px}.journal-calendar-title strong{font-size:14px}.journal-day{padding:4px 2px;min-height:60px}.journal-calendar-event{font-size:8px;padding:3px 2px}.journal-filters select{max-width:calc(100vw - 120px)}.activity-modal{padding:14px;max-height:94dvh}.activity-modal .two-col{grid-template-columns:1fr}.journal-calendar-title .btn{padding:6px 7px;font-size:10px}.journal-entry{padding:13px}}
+
 </style>
 </head>
 <body>
