@@ -582,12 +582,14 @@ function renderMapGraph(){
   const base=d===0?137:d===1?125:d===2?143:144;
   return Math.min(250,Math.max(base,94+Math.min(rows,7)*20));
  };
+ const maxHeightInTree=(n,d=0)=>Math.max(hFor(n,d),...(n.children||[]).map(c=>maxHeightInTree(c,d+1)),0);
+ const leafStride=Math.max(186,maxHeightInTree(p)+26);
  function layout(n,depth=0,index=0){
   maxDepth=Math.max(maxDepth,depth);
   const height=hFor(n,depth),children=n.children||[];
   const childBoxes=children.map((c,i)=>layout(c,depth+1,i));
   const y=childBoxes.length?(childBoxes[0].y+childBoxes[childBoxes.length-1].y)/2:cursor+height/2;
-  if(!childBoxes.length){cursor+=Math.max(height+36,186);leafCount++}
+  if(!childBoxes.length){cursor+=leafStride;leafCount++}
   const r={n,depth,y,index,height};boxes.push(r);
   childBoxes.forEach(c=>edges.push([r,c]));
   return r;
