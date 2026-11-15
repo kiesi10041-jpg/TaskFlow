@@ -557,6 +557,27 @@
 .journal-detail-backdrop{z-index:1100}
 @media(max-width:600px){.journal-days{grid-auto-rows:minmax(66px,auto)}.journal-day-select{padding:5px 3px;gap:3px}.journal-day-select .journal-day-number{font-size:10px}.journal-day-mini{display:none}.journal-detail-sheet{height:100dvh;max-height:100dvh}}
 
+
+/* Shared layout audit: restore separation and responsive alignment */
+.project-card-head{align-items:flex-start}
+.project-card-head>div:first-child{min-width:0;flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:0}
+.project-card-head .project-year-label{display:inline-flex;align-items:center;align-self:flex-start;line-height:1.3;margin:0 0 9px;font-size:10px}
+.project-card-head h3{display:block;margin:0 0 5px;font-size:15px;line-height:1.48;overflow-wrap:anywhere}
+.project-card-head .client{display:block;margin:0;line-height:1.5}
+.project-card-head>.tag{flex:none;margin-left:6px}
+.project-card .project-due-row{min-height:22px}
+.project-card .project-meta-grid{width:100%}
+.journal-list-title h2{line-height:1.4}
+.journal-entry-open{appearance:none;border-radius:0}
+.journal-entry-compact .journal-entry-head{line-height:1.4}
+.journal-detail-sheet,.journal-detail-sheet *{box-sizing:border-box}
+.journal-detail-sheet{position:relative;min-width:0}
+.journal-detail-sheet .journal-detail-head>div:first-child{min-width:0}
+.journal-detail-sheet .journal-detail-head h2{overflow-wrap:anywhere}
+.journal-detail-sheet .journal-detail-actions{flex-wrap:wrap}
+@media(max-width:920px){.project-card-head h3{font-size:14px}.journal-calendar-title{margin-bottom:10px}.journal-weeknames span{padding:7px 2px}}
+@media(max-width:600px){.project-card-head .project-year-label{margin-bottom:8px}.project-card-head>.tag{font-size:9px}.journal-list-title{gap:8px}.journal-calendar-title{gap:8px}.journal-calendar-title>div{flex-wrap:wrap}.journal-calendar{overflow:hidden}.journal-days{min-width:0}.journal-day-count{max-width:100%;white-space:normal;overflow-wrap:anywhere}.journal-detail-actions .btn{flex:1}}
+
 </style>
 <style id="checklistPageStyle">@page{size:A4 portrait;margin:10mm}
 </style>
