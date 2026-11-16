@@ -620,6 +620,25 @@
  .journal-detail-sheet{height:100dvh;min-height:0}
 }
 
+
+/* Central project visibility controls and server save feedback */
+.team-access-panel{margin:22px 0;padding:19px 18px;border:1px solid #dce5f0;border-radius:13px;background:#f9fbff}
+.team-access-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.team-access-heading h3{margin:0 0 6px}.team-access-heading p{margin:0 0 12px;font-size:11px;line-height:1.6;color:#63738c}
+.team-access-summary{flex:none;color:#4162a4;font-size:11px;font-weight:800;border-radius:6px;padding:6px 9px;background:#eaf0ff}
+.team-access-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:430px;overflow:auto;padding:3px 2px}
+.team-access-project{display:flex;align-items:flex-start;gap:10px;min-width:0;border:1px solid #dae4f2;padding:11px;background:#fff;border-radius:9px;cursor:pointer}
+.team-access-project:has(input:checked){border-color:#86a4ea;background:#f1f5ff}
+.team-access-project input{width:17px;height:17px;flex:none;margin:1px 0;accent-color:#4065ec}
+.team-access-project-copy{display:flex;flex-direction:column;gap:4px;min-width:0}
+.team-access-project-copy strong{font-size:12px;color:#2f425e;line-height:1.45;overflow-wrap:anywhere}
+.team-access-project-copy small{font-size:10px;color:#8191a8;overflow-wrap:anywhere;line-height:1.5}
+.team-access-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:13px}
+.team-access-actions .btn.primary{margin-left:auto;min-height:36px}
+.team-access-feedback,.inspector-save-feedback{font-size:11px;line-height:1.6;color:#5d7292;margin:10px 0 0}
+.inspector-save-feedback{background:#f2f6fc;border-radius:7px;padding:8px 10px}
+@media(max-width:750px){.team-access-panel{padding:14px 11px}.team-access-list{grid-template-columns:1fr;max-height:380px}.team-access-actions .btn.primary{width:100%;margin-left:0}}
+
 </style>
 <style id="checklistPageStyle">@page{size:A4 portrait;margin:10mm}
 </style>
@@ -766,6 +785,7 @@ function applyChecklistPageStyle(){
 }
 let businessYearFilter='all',journalScope='all',journalMonth=today().slice(0,7),journalFilter='all',journalNodeFocus=null,activityEditingId=null,journalSelectedDate=null,journalPage=0;
 let collapsedMapBranches=new Set();
+let inspectorSaveState='';
 let projects=getInitial(),currentProjectId=projects[0]?.id||null,selectedId=currentProjectId,focusId=null,view='dashboard',zoom=(mobileLayout()?100:85),query='',entry=null,cloudTimer=null,cloudRunning=false,savedTimer=null;
 let team={active:false,workspace:null,role:null,members:[],categoryMembers:[],projectMembers:[],invites:[],handovers:[],activityLogs:[],activityReady:false,activityError:'',handoverReady:false,audit:new Map(),base:new Map(),loaded:false,busy:false,dirty:false,seq:0,timer:null,poll:null};
 let refreshInFlight=null,authNeedsRelogin=false;
@@ -1156,7 +1176,7 @@ function projectInfoEditor(n){
  </div>${field('사업 담당자 연락처','editBusinessPhone','tel',n.businessPhone||'','010-0000-0000')}<label class="field"><span>사업연도</span><select id="editBusinessYear"><option value="">미지정</option>${['2026','2027','2028','2029','2030'].map(y=>`<option value="${y}" ${String(n.businessYear||'')===y?'selected':''}>${y}년</option>`).join('')}</select></label></section>`;
 }
 function renderInspector(){if(view==='admin'){$('#inspectorBody').innerHTML='<div class="eyebrow">SETTINGS</div><h2>'+(team.active&&!teamIsManager()?'내 계정·팀 정보':'관리자 설정')+'</h2><p class="inspector-hint">계정과 팀 정보를 확인합니다.</p>';return}if(view==='journal'){$('#inspectorBody').innerHTML='<div class="eyebrow">WORK JOURNAL</div><h2>업무기록과 일정</h2><p class="inspector-hint">날짜별 회의·협의 내용을 확인하고 업무기록을 인쇄합니다.</p>';return}if(view==='dashboard'){$('#inspectorBody').innerHTML=`<div class="eyebrow">PORTFOLIO OVERVIEW</div><h2>전체 사업 관리</h2><p class="inspector-hint">사업별 진행현황을 하나의 화면에서 확인합니다.</p><div class="note-box">왼쪽에서 사업을 선택하면 <b>지원항목 → 세부과업 → 실행단계</b>로 연결된 구조도를 열 수 있습니다.</div><hr><div class="note-box">등록된 사업 <strong>${projects.length}개</strong><br>진행단계 <strong>${aggregate().total}개</strong><br>완료 단계 <strong>${aggregate().done}개</strong></div><hr><p class="help">사업은 서로 분리해 관리하며, JSON 백업에는 모든 사업이 함께 저장됩니다. 클라우드 공유는 별도 로그인·DB 설정 후 사용 가능합니다.</p>`;return}const p=current(),f=findNode(selectedId)||findNode(p?.id);if(!f){$('#inspectorBody').innerHTML=`<div class="eyebrow">TASK INSPECTOR</div><h2>항목 편집</h2><p class="inspector-hint">사업을 선택하면 과업의 이름, 담당자, 기한, 진행상태를 수정할 수 있습니다.</p>`;return}
- const {n,parent,level}=f,st=stateOf(n,level),s=stats(n,level),labels=['사업명','지원항목','세부과업','진행단계'],siblingIndex=parent?parent.children.findIndex(x=>x.id===n.id):-1,editable=teamCanEdit(n,level),canAdd=teamCanAdd(n,level);$('#inspectorBody').innerHTML=`<div class="eyebrow">ITEM INSPECTOR</div><h2>${labels[Math.min(level,3)]} ${editable?'편집':'조회'}</h2><p class="inspector-hint">${editable?'사업 및 과업 구조를 변경하거나 완료 상태를 관리합니다.':'상위 구조는 팀장·관리자만 수정할 수 있습니다. 배정된 수행과업 아래에 하위 과업을 추가해 주세요.'}</p><fieldset class="inspector-edit-scope" ${editable?'':'disabled'}><label class="field"><span>이름</span><input id="editName" maxlength="130" value="${esc(n.title)}"></label>${level===0?`<label class="field"><span>기업명 / 발주처</span><input id="editCompany" maxlength="100" value="${esc(n.client||'')}"></label>${projectInfoEditor(n)}`:''}<label class="field"><span>메모 / 수행내용</span><textarea id="editNote" placeholder="진행내용 및 필요한 사항">${esc(n.note||'')}</textarea></label>${level>=2?assigneeEditor(n):''}${inspectorStatusPanel(n,level,st)}${s.total?`<div class="note-box">진행단계 완료: <strong>${s.done} / ${s.total} (${rate(n,level)}%)</strong></div>`:''}<button class="btn primary" id="saveNode" style="width:100%;margin-top:15px">변경사항 저장</button></fieldset>${team.active&&level===1?teamAssignmentsEditor(n):''}${team.active?teamAuditPanel(n.id):''}${journalInspectorPanel(n.id)}<hr><div class="field"><span>구조 편집</span><p class="inspector-section-hint">하위 항목을 추가하거나 같은 단계 안에서 표시 순서를 바꿉니다.</p><div class="inspector-actions">${canAdd?`<button class="btn verylight" data-add="${esc(n.id)}">＋ 하위 단계 추가</button>`:''}${editable&&parent?`<button class="btn" data-move="-1" ${siblingIndex===0?'disabled':''}>↑ 위로 이동</button><button class="btn" data-move="1" ${siblingIndex===parent.children.length-1?'disabled':''}>↓ 아래로 이동</button>`:''}${level===2?`<button class="btn" data-focus="${esc(n.id)}">실행단계 보기 →</button>`:''}</div></div><div class="actions"><button class="btn" id="closeInspector">✕ 패널 닫기</button></div>${editable?`<div class="inspector-danger"><button class="btn danger" data-remove="${esc(n.id)}">${level===0?'사업 전체 삭제':'이 항목 삭제'}</button></div>`:''}<hr><p class="help">항목 이름과 메모는 ‘변경사항 저장’으로 저장됩니다. 완료 상태는 즉시 저장됩니다.<br>하위 항목의 완료 표시만으로 상위 단계가 자동 완료되지 않습니다. 상위 단계의 최종 완료를 직접 표시해 주세요.<br>${team.active?'모든 변경은 회사 공동 작업공간에 저장되어 참여자 화면에 자동으로 반영됩니다.':'모든 변경은 이 브라우저에 먼저 저장되며, 클라우드 연결 후 동기화됩니다.'}</p>`}
+ const {n,parent,level}=f,st=stateOf(n,level),s=stats(n,level),labels=['사업명','지원항목','세부과업','진행단계'],siblingIndex=parent?parent.children.findIndex(x=>x.id===n.id):-1,editable=teamCanEdit(n,level),canAdd=teamCanAdd(n,level);$('#inspectorBody').innerHTML=`<div class="eyebrow">ITEM INSPECTOR</div><h2>${labels[Math.min(level,3)]} ${editable?'편집':'조회'}</h2><p class="inspector-hint">${editable?'사업 및 과업 구조를 변경하거나 완료 상태를 관리합니다.':'상위 구조는 팀장·관리자만 수정할 수 있습니다. 배정된 수행과업 아래에 하위 과업을 추가해 주세요.'}</p><fieldset class="inspector-edit-scope" ${editable?'':'disabled'}><label class="field"><span>이름</span><input id="editName" maxlength="130" value="${esc(n.title)}"></label>${level===0?`<label class="field"><span>기업명 / 발주처</span><input id="editCompany" maxlength="100" value="${esc(n.client||'')}"></label>${projectInfoEditor(n)}`:''}<label class="field"><span>메모 / 수행내용</span><textarea id="editNote" placeholder="진행내용 및 필요한 사항">${esc(n.note||'')}</textarea></label>${level>=2?assigneeEditor(n):''}${inspectorStatusPanel(n,level,st)}${s.total?`<div class="note-box">진행단계 완료: <strong>${s.done} / ${s.total} (${rate(n,level)}%)</strong></div>`:''}<button class="btn primary" id="saveNode" type="button" style="width:100%;margin-top:15px">${team.active?"변경사항 서버 저장":"변경사항 저장"}</button><p class="inspector-save-feedback" id="inspectorSaveFeedback" role="status" aria-live="polite">${esc(inspectorSaveState|| (editable?"변경사항을 입력한 뒤 저장하세요.":"조회 권한만 있습니다. 관리자에게 수정 권한을 요청하세요."))}</p></fieldset>${team.active&&level===1?teamAssignmentsEditor(n):''}${team.active?teamAuditPanel(n.id):''}${journalInspectorPanel(n.id)}<hr><div class="field"><span>구조 편집</span><p class="inspector-section-hint">하위 항목을 추가하거나 같은 단계 안에서 표시 순서를 바꿉니다.</p><div class="inspector-actions">${canAdd?`<button class="btn verylight" data-add="${esc(n.id)}">＋ 하위 단계 추가</button>`:''}${editable&&parent?`<button class="btn" data-move="-1" ${siblingIndex===0?'disabled':''}>↑ 위로 이동</button><button class="btn" data-move="1" ${siblingIndex===parent.children.length-1?'disabled':''}>↓ 아래로 이동</button>`:''}${level===2?`<button class="btn" data-focus="${esc(n.id)}">실행단계 보기 →</button>`:''}</div></div><div class="actions"><button class="btn" id="closeInspector">✕ 패널 닫기</button></div>${editable?`<div class="inspector-danger"><button class="btn danger" data-remove="${esc(n.id)}">${level===0?'사업 전체 삭제':'이 항목 삭제'}</button></div>`:''}<hr><p class="help">항목 이름과 메모는 ‘변경사항 저장’으로 저장됩니다. 완료 상태는 즉시 저장됩니다.<br>하위 항목의 완료 표시만으로 상위 단계가 자동 완료되지 않습니다. 상위 단계의 최종 완료를 직접 표시해 주세요.<br>${team.active?'모든 변경은 회사 공동 작업공간에 저장되어 참여자 화면에 자동으로 반영됩니다.':'모든 변경은 이 브라우저에 먼저 저장되며, 클라우드 연결 후 동기화됩니다.'}</p>`}
 function renderAdmin(){
  if(team.active&&!teamIsManager())return `<div class="admin-shell"><div class="admin-hero"><div><div class="eyebrow">TEAM ACCOUNT</div><h2>내 계정·팀 정보</h2><p>직원 정보와 참여 프로젝트를 관리합니다. 회사 최고관리자 설정은 표시되지 않습니다.</p></div><div class="admin-pill">직원 계정</div></div><div class="admin-grid">
  <section class="admin-card"><h3>로그인 정보</h3><div class="admin-row"><span class="admin-k">내 계정</span><strong>${esc(session.user.email||'')}</strong></div><div class="admin-row"><span class="admin-k">공동 작업</span><strong>회사 작업공간 연결됨</strong></div><div class="admin-actions"><button class="btn" id="cloudBtn" type="button">계정 정보·로그아웃</button></div></section>
@@ -1198,9 +1218,10 @@ function addDialog(target=null){const f=target?findNode(target):null;if(target&&
 function closeEntry(){entry=null;$('#entryBackdrop').classList.add('hidden')}
 function makeEntry(){const name=$('#entryName').value.trim();if(!name||!entry)return;if(!entry.target&&!teamCanCreateProject()){notify('사업 생성 권한이 없습니다.');return}if(entry.target){const tf=findNode(entry.target);if(!tf||!teamCanAdd(tf.n,tf.level)){notify('이 수행과업에 추가 권한이 없습니다.');return}}if(!entry.target){const n=node(name,[],$('#entryNote').value.trim());n.client=$('#entryCompany').value.trim();n.contractDate=$('#entryContractDate').value;n.deadline=$('#entryDeadline').value;n.projectManager=$('#entryProjectManager').value.trim();n.businessContact=$('#entryBusinessContact').value.trim();n.businessPhone=$('#entryBusinessPhone').value.trim();n.businessYear=$('#entryBusinessYear').value||'';if(n.contractDate&&n.deadline&&n.contractDate>n.deadline){notify('마감일은 계약일보다 빠를 수 없습니다.');return}n.createdAt=today();projects.push(n);currentProjectId=selectedId=n.id;focusId=null;view='map'}else{const f=findNode(entry.target);if(!f)return;const n=node(name,[],$('#entryNote').value.trim());f.n.children.push(n);if(f.level>=3){f.n.status='todo';reopenAncestorStages(f.parent)}selectedId=n.id;if(f.level===2)focusId=f.n.id}closeEntry();mutate();notify('새 항목이 등록되었습니다.')}
 function saveEdit(){
- const f=findNode(selectedId);if(!f)return;if(!teamCanEdit(f.n,f.level)){notify('수정 권한이 없습니다.');return}
+ const f=findNode(selectedId);if(!f){notify('수정할 항목을 찾지 못했습니다.');return}if(!teamCanEdit(f.n,f.level)){notify('수정 권한이 없습니다.');return}
  const t=$('#editName')?.value.trim();if(!t){notify('항목명을 입력해 주세요.');return}
  if(f.level===0&&$('#editContractDate')?.value&&$('#editDeadline')?.value&&$('#editContractDate').value>$('#editDeadline').value){notify('마감일은 계약일보다 빠를 수 없습니다.');return}
+ const snapshot=teamStableJSON(f.n);
  f.n.title=t;f.n.note=$('#editNote')?.value.trim()||'';
  if(f.level===0){f.n.client=$('#editCompany')?.value.trim()||'';f.n.contractDate=$('#editContractDate')?.value||'';f.n.deadline=$('#editDeadline')?.value||'';f.n.projectManager=$('#editProjectManager')?.value.trim().slice(0,80)||'';f.n.businessContact=$('#editBusinessContact')?.value.trim().slice(0,80)||'';f.n.businessPhone=$('#editBusinessPhone')?.value.trim().slice(0,80)||'';f.n.businessYear=$('#editBusinessYear')?.value||''}
  if(f.level>=2){
@@ -1209,7 +1230,14 @@ function saveEdit(){
   f.n.assignee=owners.join(', ');
   f.n.due=$('#editDue')?.value||'';
  }
- mutate();notify('수정 내용이 저장되었습니다.');
+ if(snapshot===teamStableJSON(f.n)){
+  inspectorSaveState='변경사항이 없습니다. 현재 저장된 내용과 동일합니다.';
+  const feedback=$('#inspectorSaveFeedback');if(feedback)feedback.textContent=inspectorSaveState;
+  notify('변경사항이 없습니다.');return;
+ }
+ inspectorSaveState=team.active?'서버에 변경사항을 전송하고 있습니다.':'변경사항을 이 기기에 저장했습니다.';
+ mutate();
+ notify(team.active?'변경사항 저장 요청됨 · 서버 반영 확인 중':'변경사항이 이 기기에 저장되었습니다.');
 }
 function moveItem(delta){const f=findNode(selectedId);if(!f?.parent)return;if(!teamCanEdit(f.n,f.level)){notify('이동 권한이 없습니다.');return}const arr=f.parent.children;const i=arr.findIndex(x=>x.id===f.n.id),j=i+delta;if(i<0||j<0||j>=arr.length){notify('이동할 위치가 없습니다.');return}[arr[i],arr[j]]=[arr[j],arr[i]];mutate();notify('항목 순서를 변경했습니다.')}
 let duplicateSourceId=null;
@@ -2017,6 +2045,8 @@ function teamQueueSave(){
  if(team.timer)clearTimeout(team.timer);
  team.timer=setTimeout(()=>teamFlush().catch(e=>{
   console.warn('TaskFlow collaborative save:',e);
+  inspectorSaveState='서버 저장 실패: '+e.message+' · 기기 작업본은 보관 중';
+  const feedback=$('#inspectorSaveFeedback');if(feedback)feedback.textContent=inspectorSaveState;
   $('#saveLabel').textContent='공동 저장 실패 · 변경내용은 이 기기에 임시 보관됨';
   if(authNeedsRelogin)notify('로그인 갱신이 필요합니다. 관리자 설정 → 계정·클라우드 설정에서 기존 계정으로 다시 로그인하세요. 기기 작업본은 보관 중입니다.');
   else notify('공동 저장 실패: '+e.message);
@@ -2075,6 +2105,11 @@ async function teamFlush(){
    localStorage.setItem(teamCacheKey(),JSON.stringify(projects));
    cloudReady=true;
    $('#saveLabel').textContent='회사 공동 작업공간 저장됨';
+   if(inspectorSaveState==='서버에 변경사항을 전송하고 있습니다.'){
+    inspectorSaveState='서버 저장 완료 · 다른 직원과 동기화됩니다.';
+    const feedback=$('#inspectorSaveFeedback');if(feedback)feedback.textContent=inspectorSaveState;
+    notify('변경사항이 서버에 저장되었습니다.');
+   }
    if(!document.activeElement?.closest?.('#inspectorBody,#entryForm,#duplicateForm'))render();
   }else{
    team.dirty=true;
@@ -2191,12 +2226,11 @@ async function teamAssignCategory(categoryId,userId){
  const path='/rest/v1/taskflow_category_members';
  if(active){
   await cloudRequest(path+'?category_id=eq.'+encodeURIComponent(categoryId)+'&user_id=eq.'+encodeURIComponent(userId),'DELETE');
-  const otherScopes=team.categoryMembers.some(a=>a.project_id===currentProjectId&&a.user_id===userId&&a.category_id!==categoryId);
-  if(!otherScopes)await cloudRequest('/rest/v1/taskflow_project_members?project_id=eq.'+encodeURIComponent(currentProjectId)+'&user_id=eq.'+encodeURIComponent(userId),'DELETE');
+  // Leave the project reading membership in place. Only the explicit project-access panel may revoke it.
  }else await cloudRequest(path,'POST',{project_id:currentProjectId,category_id:categoryId,user_id:userId});
- await teamLoadMembers();renderInspector();notify(active?'수행과업 배정을 해제했습니다.':'팀원에게 수행과업을 배정했습니다.');
+ await teamLoadMembers();renderInspector();notify(active?'수행과업 수정 권한을 해제했습니다. 사업 열람 권한은 유지됩니다.':'수행과업 수정 담당을 지정했습니다. 사업 열람도 허용됩니다.');
 }
-function teamMaskName(name){const s=String(name||'').trim();if(!s)return '이름 미등록';if(s.includes('@'))return '직원';return s.length===1?s:s[0]+'○'.repeat(Math.max(1,s.length-1))}
+function teamMaskName(name){const s=String(name||'').trim();return !s?'이름 미등록':s.includes('@')?'직원':s}
 function teamMemberName(userId){
  const person=team.members.find(m=>m.user_id===userId);
  if(!person)return userId?'이전 구성원':'확인 전';
@@ -2255,6 +2289,71 @@ function teamAssignmentsEditor(n){
  return `<div class="team-member-row"><span>${esc(teamMaskName(m.display_name))} ${m.job_title?`<small>${esc(m.job_title)}</small>`:''}</span><button class="btn ${chosen?'':'verylight'}" data-team-category="${esc(n.id)}" data-team-user="${esc(m.user_id)}" type="button">${chosen?'✓ 배정됨 · 해제':'＋ 담당 지정'}</button></div>`;
  }).join('')}</div>`;
 }
+
+let teamAccessMemberId=null;
+function teamProjectAccessPanel(){
+ if(!teamIsManager())return '';
+ const members=team.members.filter(m=>m.role==='member');
+ if(!members.length)return '<section class="team-access-panel"><h3>사업별 직원 열람 권한</h3><p>직원 초대를 완료하면 여기서 열람할 사업을 선택할 수 있습니다.</p></section>';
+ const member=members.find(m=>m.user_id===teamAccessMemberId)||members[0];
+ teamAccessMemberId=member.user_id;
+ const granted=new Set(team.projectMembers.filter(x=>x.user_id===member.user_id).map(x=>x.project_id));
+ return `<section class="team-access-panel" aria-label="사업별 직원 열람 권한 관리">
+ <div class="team-access-heading"><div><h3>사업별 직원 열람 권한</h3><p>직원을 선택한 후 보여줄 사업에 체크하세요. 다른 사업은 직원 화면에 표시되지 않습니다.</p></div>
+ <span class="team-access-summary">현재 ${granted.size}개 사업 열람 가능</span></div>
+ <label class="field" for="teamAccessMember"><span>직원 선택</span><select id="teamAccessMember">
+ ${members.map(m=>`<option value="${esc(m.user_id)}" ${m.user_id===member.user_id?'selected':''}>${esc(teamMemberName(m.user_id))}${m.department?' · '+esc(m.department):''}</option>`).join('')}</select></label>
+ <div class="team-access-list">
+ ${projects.map(p=>{
+  const editCount=team.categoryMembers.filter(a=>a.project_id===p.id&&a.user_id===member.user_id).length;
+  return `<label class="team-access-project"><input type="checkbox" data-team-project-access="${esc(p.id)}" ${granted.has(p.id)?'checked':''}/>
+  <span class="team-access-project-copy"><strong>${esc(p.title)}</strong><small>${esc(p.client||'발주처 미등록')}${editCount?' · 수행과업 수정 담당 '+editCount+'개':''}</small></span></label>`;
+ }).join('')||'<p>회사 공동 작업공간에 등록된 사업이 없습니다.</p>'}</div>
+ <div class="team-access-actions">
+ <button type="button" class="btn" id="teamAccessAll">모두 선택</button>
+ <button type="button" class="btn" id="teamAccessNone">선택 해제</button>
+ <button type="button" class="btn primary" id="teamAccessSave">선택한 사업 열람 권한 저장</button></div>
+ <p id="teamAccessFeedback" class="team-access-feedback" role="status" aria-live="polite">열람만 허용되며, 세부과업을 추가·수정하려면 각 수행과업에서 ‘담당 지정’이 별도로 필요합니다.</p>
+ </section>`;
+}
+async function teamSaveProjectAccess(){
+ if(!teamIsManager())throw Error('관리자 또는 팀장만 직원의 사업 열람 권한을 변경할 수 있습니다.');
+ const userId=$('#teamAccessMember')?.value;
+ if(!userId||!team.members.some(m=>m.user_id===userId&&m.role==='member'))throw Error('유효한 참여 직원을 선택하세요.');
+ const checks=[...document.querySelectorAll('[data-team-project-access]')];
+ const validProjects=new Set(projects.map(p=>p.id));
+ const desired=new Set(checks.filter(el=>el.checked&&validProjects.has(el.dataset.teamProjectAccess)).map(el=>el.dataset.teamProjectAccess));
+ const existing=new Set(team.projectMembers.filter(x=>x.user_id===userId).map(x=>x.project_id));
+ const added=[...desired].filter(id=>!existing.has(id));
+ const removed=[...existing].filter(id=>validProjects.has(id)&&!desired.has(id));
+ if(!added.length&&!removed.length){notify('열람 권한에 변경된 내용이 없습니다.');return}
+ const restricted=removed.filter(id=>team.categoryMembers.some(a=>a.project_id===id&&a.user_id===userId));
+ if(restricted.length){
+  const titles=restricted.map(id=>projects.find(p=>p.id===id)?.title||id).join(', ');
+  throw Error('수행과업 수정 담당으로 지정된 사업은 바로 열람 해제할 수 없습니다. 해당 사업의 수행과업 담당 지정을 먼저 해제해 주세요: '+titles);
+ }
+ if(removed.length&&!confirm('선택한 직원이 '+removed.length+'개 사업을 더 이상 열람할 수 없게 됩니다. 기존 사업 데이터는 삭제되지 않습니다. 계속할까요?'))return;
+ const button=$('#teamAccessSave'),feedback=$('#teamAccessFeedback');
+ if(button){button.disabled=true;button.textContent='권한 저장 중…'}
+ if(feedback)feedback.textContent='Supabase에 열람 권한을 반영하고 있습니다.';
+ try{
+  for(const id of added)await cloudRequest('/rest/v1/taskflow_project_members','POST',{project_id:id,user_id:userId},{'Prefer':'return=minimal'});
+  for(const id of removed)await cloudRequest('/rest/v1/taskflow_project_members?project_id=eq.'+encodeURIComponent(id)+'&user_id=eq.'+encodeURIComponent(userId),'DELETE');
+  await teamLoadMembers();
+  teamAccessMemberId=userId;
+  render();
+  const msg='직원 사업 열람 권한 저장 완료 · 추가 '+added.length+'개, 해제 '+removed.length+'개';
+  const el=$('#teamAccessFeedback');if(el)el.textContent=msg+' · 직원 계정에서 다시 불러오면 반영됩니다.';
+  notify(msg);
+ }catch(err){
+  if(feedback)feedback.textContent='권한 저장 실패: '+err.message;
+  try{await teamLoadMembers()}catch(_){}
+  throw err;
+ }finally{
+  const b=$('#teamAccessSave');if(b){b.disabled=false;b.textContent='선택한 사업 열람 권한 저장'}
+ }
+}
+
 function renderTeamAdmin(){
  if(!session?.user?.id)return `<section class="admin-card team-admin-card"><h3>내 계정과 회사 공동 작업</h3><p>먼저 계정·클라우드 설정에서 개인 이메일로 로그인해 주세요.</p></section>`;
  if(!team.active){
@@ -2336,6 +2435,7 @@ function renderTeamAdmin(){
    <div class="team-staff-row heading"><span>이름</span><span>소속팀</span><span>직급</span><span>권한</span></div>
    ${team.members.map(m=>`<div class="team-staff-row"><span><b>${esc(teamMaskName(m.display_name))}</b><small>직원 계정</small></span><span>${esc(m.department||'미입력')}</span><span>${esc(m.job_title||'미입력')}</span><span>${esc(roleLabel[m.role]||m.role)}</span></div>`).join('')}
    </div>
+   ${teamProjectAccessPanel()}
    ${invite}
    ${transfer}
    ${localStorage.getItem(teamDraftKey())||localStorage.getItem(teamRecoveryKey())?`<div class="team-local-recovery"><h3>이 기기에 남은 작업본 보호</h3><p>클라우드 인증 오류나 동기화 충돌이 발생했을 때 저장된 작업본입니다. 다른 팀원의 자료를 덮어쓰지 않도록 자동 복원하지 않으며, JSON으로 내려받아 보관할 수 있습니다.</p><button class="btn" id="teamRecoveryDownload" type="button">↓ 이 기기의 작업본 백업</button>${team.dirty?'<p><b>아직 클라우드에 전송되지 않은 변경이 있습니다.</b> 위쪽의 변경사항 저장을 실행하기 전에 백업을 권장합니다.</p>':''}</div>`:''}
@@ -2502,6 +2602,13 @@ function handleGlobalClick(e){const target=e.target;
   else{const [y,m]=journalMonth.split('-').map(Number),diff=target.closest('#journalPrev')?-1:1;const d=new Date(y,m-1+diff,1);journalMonth=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')}
   render();return
  }
+ if(target.closest('#teamAccessAll')||target.closest('#teamAccessNone')){
+  const enable=!!target.closest('#teamAccessAll');
+  document.querySelectorAll('[data-team-project-access]').forEach(el=>{el.checked=enable});
+  const feedback=$('#teamAccessFeedback');if(feedback)feedback.textContent='선택 내용을 바꿨습니다. 아래의 저장 버튼을 눌러야 실제 권한에 반영됩니다.';
+  return
+ }
+ if(target.closest('#teamAccessSave')){cloudAction(teamSaveProjectAccess,false);return}
  if(target.closest('[data-team-category]')){const b=target.closest('[data-team-category]');cloudAction(()=>teamAssignCategory(b.dataset.teamCategory,b.dataset.teamUser));return}
  if(target.closest('[data-duplicate]')){if(!teamCanCreateProject()){notify('사업 복제 권한이 없습니다.');return}openDuplicate(target.closest('[data-duplicate]').dataset.duplicate);return}
  if(target.closest('[data-project]')){setProject(target.closest('[data-project]').dataset.project);return}
@@ -2592,6 +2699,11 @@ $('#activityCancel').addEventListener('click',journalCloseEditor);
 $('#activityBackdrop').addEventListener('click',e=>{if(e.target.id==='activityBackdrop')journalCloseEditor()});
 $('#content').addEventListener('change',e=>{
  const id=e.target.id;
+ if(id==='teamAccessMember'){
+  teamAccessMemberId=e.target.value;
+  render();
+  return;
+ }
  if(id==='checklistOrientation'){
   checklistOrientation=e.target.value==='landscape'?'landscape':'portrait';
   localStorage.setItem('taskflow-checklist-orientation',checklistOrientation);
